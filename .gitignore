@@ -1,0 +1,21 @@
+# Entorno Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+backend/.env
+
+# Archivos generados por Flutter/Dart
+aplicacion_flutter/.dart_tool/
+aplicacion_flutter/build/
+aplicacion_flutter/.packages
+aplicacion_flutter/.flutter-plugins
+aplicacion_flutter/.flutter-plugins-dependencies
+aplicacion_flutter/android/local.properties
+aplicacion_flutter/ios/Flutter/Generated.xcconfig
+aplicacion_flutter/ios/Flutter/ephemeral/
+
+# Archivos del editor
+.idea/
+*.iml

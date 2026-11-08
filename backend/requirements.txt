@@ -1,0 +1,9 @@
+Flask>=3.1,<4
+PyJWT>=2.10,<3
+supabase>=2.0,<3
+python-dotenv>=1.0,<2
+gunicorn>=23.0,<24
+
+# Dependencias de pruebas
+pytest>=8.0,<10
+

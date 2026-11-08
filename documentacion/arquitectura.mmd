@@ -1,0 +1,16 @@
+flowchart LR
+    pasajero["Pasajero"] --> app["Aplicación móvil Flutter\nmodels / services / pages"]
+    app -->|"HTTPS · JSON · JWT"| api["API REST Flask\nUsuarios · Autenticación\nVuelos · Reservas · XML"]
+    api -->|"SUPABASE_URL + service_role\nsolo en servidor"| supa["Supabase / PostgreSQL"]
+    supa --> users[("usuarios")]
+    supa --> tokens[("tokens")]
+    supa --> flights[("vuelos")]
+    supa --> bookings[("reservas\nsubtotal · IVA 15 % · total")]
+    api -->|"RPC transaccional"| book["reservar_vuelo()\nvalida y descuenta asientos"]
+    api -->|"RPC transaccional"| cancel["cancelar_reserva()\nrestaura asientos"]
+    book --> flights
+    book --> bookings
+    cancel --> bookings
+    cancel --> flights
+    api -->|"GET comprobante.xml\nsolo propietario"| app
+    api -. "Blueprint render.yaml" .-> render["Render"]
