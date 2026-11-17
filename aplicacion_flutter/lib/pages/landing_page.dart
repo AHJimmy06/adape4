@@ -45,26 +45,28 @@ class _LandingPageState extends State<LandingPage> {
         child: SingleChildScrollView(
           child: Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1280),
+              constraints: const BoxConstraints(maxWidth: 1200),
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final amplio = constraints.maxWidth >= 900;
                   return Padding(
                     padding: EdgeInsets.symmetric(
-                      horizontal: amplio ? 52 : 24,
-                      vertical: amplio ? 30 : 20,
+                      horizontal: amplio ? 48 : 20,
+                      vertical: amplio ? 24 : 20,
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         _cabecera(),
-                        SizedBox(height: amplio ? 64 : 42),
+                        const SizedBox(height: 24),
+                        const Divider(color: AerotechTheme.border),
+                        SizedBox(height: amplio ? 40 : 32),
                         if (amplio)
                           Row(
                             children: [
-                              Expanded(flex: 11, child: _presentacion(amplio)),
-                              const SizedBox(width: 24),
-                              Expanded(flex: 10, child: _mundo()),
+                              Expanded(child: _presentacion(amplio)),
+                              const SizedBox(width: 48),
+                              Expanded(child: _mundo()),
                             ],
                           )
                         else ...[
@@ -72,7 +74,26 @@ class _LandingPageState extends State<LandingPage> {
                           const SizedBox(height: 28),
                           _mundo(),
                         ],
-                        SizedBox(height: amplio ? 64 : 40),
+                        const SizedBox(height: 48),
+                        const Text(
+                          'Tu viaje, de principio a fin',
+                          style: TextStyle(
+                            fontSize: 28,
+                            height: 1.2,
+                            fontWeight: FontWeight.w700,
+                            color: AerotechTheme.navy,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Un solo lugar para descubrir, reservar y organizar tu próximo destino.',
+                          style: TextStyle(
+                            fontSize: 15,
+                            height: 1.5,
+                            color: AerotechTheme.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: 24),
                         _experiencia(amplio),
                         const SizedBox(height: 28),
                         const Divider(color: AerotechTheme.border),
@@ -119,7 +140,7 @@ class _LandingPageState extends State<LandingPage> {
           'AeroTech',
           style: TextStyle(
             fontWeight: FontWeight.w800,
-            fontSize: 23,
+            fontSize: 22,
             letterSpacing: -0.8,
             color: AerotechTheme.navy,
           ),
@@ -127,6 +148,10 @@ class _LandingPageState extends State<LandingPage> {
       ),
       TextButton(
         onPressed: () => _abrir(registro: false),
+        style: TextButton.styleFrom(
+          minimumSize: const Size(0, 48),
+          textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        ),
         child: const Text('Iniciar sesión'),
       ),
     ],
@@ -147,25 +172,25 @@ class _LandingPageState extends State<LandingPage> {
             color: AerotechTheme.blue,
             fontWeight: FontWeight.w800,
             letterSpacing: 1.3,
-            fontSize: 10,
+            fontSize: 11,
           ),
         ),
       ),
-      const SizedBox(height: 23),
+      const SizedBox(height: 20),
       Semantics(
         header: true,
         child: Text(
           'El mundo está\nmás cerca.',
           style: TextStyle(
             color: AerotechTheme.navy,
-            fontSize: amplio ? 66 : 43,
+            fontSize: amplio ? 58 : 42,
             height: 1.06,
-            letterSpacing: amplio ? -2.5 : -1.6,
+            letterSpacing: amplio ? -2 : -1.2,
             fontWeight: FontWeight.w800,
           ),
         ),
       ),
-      const SizedBox(height: 23),
+      const SizedBox(height: 20),
       ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 450),
         child: const Text(
@@ -173,40 +198,13 @@ class _LandingPageState extends State<LandingPage> {
           'Encuentra tu próximo vuelo y empieza a imaginar el viaje.',
           style: TextStyle(
             color: AerotechTheme.textSecondary,
-            fontSize: 17,
-            height: 1.65,
+            fontSize: 16,
+            height: 1.55,
           ),
         ),
       ),
       const SizedBox(height: 28),
-      Wrap(
-        spacing: 12,
-        runSpacing: 12,
-        children: [
-          FilledButton.icon(
-            key: const ValueKey('landing-crear-cuenta'),
-            onPressed: () => _abrir(registro: true),
-            icon: const Icon(Icons.arrow_forward_rounded, size: 19),
-            label: const Text('Crear cuenta'),
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
-            ),
-          ),
-          OutlinedButton.icon(
-            onPressed: () => _abrir(registro: false),
-            icon: const Icon(Icons.travel_explore_rounded, size: 20),
-            label: const Text('Explorar vuelos'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AerotechTheme.navy,
-              side: const BorderSide(color: AerotechTheme.border),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-            ),
-          ),
-        ],
-      ),
+      _acciones(),
       const SizedBox(height: 20),
       const Text(
         'Tus destinos. Tus planes. Tu manera de viajar.',
@@ -215,46 +213,99 @@ class _LandingPageState extends State<LandingPage> {
     ],
   );
 
+  Widget _acciones() => LayoutBuilder(
+    builder: (context, constraints) {
+      final ancho = constraints.maxWidth < 350
+          ? constraints.maxWidth
+          : ((constraints.maxWidth - 12) / 2).clamp(0.0, 196.0).toDouble();
+      final forma = RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+      );
+      final alto =
+          52.0 +
+          (MediaQuery.textScalerOf(context).scale(14) - 14).clamp(
+            0,
+            double.infinity,
+          );
+      final tamano = Size(ancho, alto);
+      const texto = TextStyle(fontSize: 14, fontWeight: FontWeight.w600);
+      return Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        children: [
+          FilledButton.icon(
+            key: const ValueKey('landing-crear-cuenta'),
+            onPressed: () => _abrir(registro: true),
+            icon: const Icon(Icons.arrow_forward_rounded, size: 20),
+            label: const Text('Crear cuenta'),
+            style: FilledButton.styleFrom(
+              fixedSize: tamano,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              shape: forma,
+              textStyle: texto,
+            ),
+          ),
+          OutlinedButton.icon(
+            onPressed: () => _abrir(registro: false),
+            icon: const Icon(Icons.travel_explore_rounded, size: 20),
+            label: const Text('Explorar vuelos'),
+            style: OutlinedButton.styleFrom(
+              fixedSize: tamano,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              foregroundColor: AerotechTheme.navy,
+              side: const BorderSide(color: AerotechTheme.border),
+              shape: forma,
+              textStyle: texto,
+            ),
+          ),
+        ],
+      );
+    },
+  );
+
   Widget _mundo() {
     final estatico = _navegando || ModalRoute.isCurrentOf(context) == false;
     final movimientoReducido = MediaQuery.disableAnimationsOf(context);
     return Column(
       children: [
-        AspectRatio(
-          aspectRatio: 1.05,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Container(
-                margin: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(
-                    colors: [
-                      AerotechTheme.cyan.withValues(alpha: 0.22),
-                      AerotechTheme.cyan.withValues(alpha: 0),
-                    ],
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 440),
+          child: AspectRatio(
+            aspectRatio: 1,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  margin: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        AerotechTheme.cyan.withValues(alpha: 0.22),
+                        AerotechTheme.cyan.withValues(alpha: 0),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              if (estatico)
-                const Icon(
-                  Icons.public_rounded,
-                  key: ValueKey('landing-globo-estatico'),
-                  size: 180,
-                  color: AerotechTheme.blue,
-                  semanticLabel: 'El mundo de AeroTech',
-                )
-              else
-                widget.globoBuilder?.call(context) ??
-                    GloboVuelos(
-                      key: ValueKey('landing-globo-$movimientoReducido'),
-                      animar: !movimientoReducido,
-                    ),
-            ],
+                if (estatico)
+                  const Icon(
+                    Icons.public_rounded,
+                    key: ValueKey('landing-globo-estatico'),
+                    size: 180,
+                    color: AerotechTheme.blue,
+                    semanticLabel: 'El mundo de AeroTech',
+                  )
+                else
+                  widget.globoBuilder?.call(context) ??
+                      GloboVuelos(
+                        key: ValueKey('landing-globo-$movimientoReducido'),
+                        animar: !movimientoReducido,
+                      ),
+              ],
+            ),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
         const Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -301,14 +352,16 @@ class _LandingPageState extends State<LandingPage> {
     if (!amplio) {
       return const Column(children: tarjetas);
     }
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (var i = 0; i < tarjetas.length; i++) ...[
-          if (i != 0) const SizedBox(width: 16),
-          Expanded(child: tarjetas[i]),
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < tarjetas.length; i++) ...[
+            if (i != 0) const SizedBox(width: 16),
+            Expanded(child: tarjetas[i]),
+          ],
         ],
-      ],
+      ),
     );
   }
 }
@@ -328,6 +381,7 @@ class _Ventaja extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     width: double.infinity,
+    constraints: const BoxConstraints(minHeight: 224),
     margin: const EdgeInsets.only(bottom: 12),
     padding: const EdgeInsets.all(24),
     decoration: BoxDecoration(
@@ -341,7 +395,15 @@ class _Ventaja extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Icon(icono, color: AerotechTheme.blue, size: 27),
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: AerotechTheme.cyan.withValues(alpha: 0.13),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icono, color: AerotechTheme.blue, size: 24),
+            ),
             Text(
               numero,
               style: const TextStyle(
@@ -365,8 +427,8 @@ class _Ventaja extends StatelessWidget {
         Text(
           detalle,
           style: const TextStyle(
-            fontSize: 13,
-            height: 1.6,
+            fontSize: 14,
+            height: 1.5,
             color: AerotechTheme.textSecondary,
           ),
         ),

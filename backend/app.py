@@ -11,9 +11,9 @@ from flask import Flask, Response, g, jsonify, request
 from backend.models import ErrorAPI, reserva_publica, usuario_publico
 from backend.repository import RepositorioSupabase
 from backend.services import (ServicioAutenticacion, validar_filtros_vuelos,
-                              validar_login, validar_registro, validar_reserva, validar_vuelo, validar_version_vuelo)
+                              validar_login, validar_registro)
 
-def create_app(repository=None, jwt_secret=None):
+def create_app(repository=None, jwt_secret=None, stripe_provider=None):
     load_dotenv(Path(__file__).with_name('.env'))
     app = Flask(__name__)
     origenes_cors = {origen.strip() for origen in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if origen.strip()}
@@ -110,23 +110,17 @@ def create_app(repository=None, jwt_secret=None):
     @app.route("/api/vuelos", methods=["POST"])
     @requiere_administrador
     def crear_vuelo():
-        vuelo = repository.crear_vuelo(validar_vuelo(request.get_json(silent=True)))
-        return jsonify({"vuelo": vuelo}), 201
+        raise ErrorAPI('flujo_retirado', 'Usa /api/sistema con asientos numerados y Stripe TEST.', 410)
 
     @app.route("/api/vuelos/<vuelo_id>", methods=["PUT"])
     @requiere_administrador
     def modificar_vuelo(vuelo_id):
-        datos = request.get_json(silent=True)
-        version = validar_version_vuelo(datos)
-        vuelo = repository.modificar_vuelo(vuelo_id, validar_vuelo(datos, permitir_agotado=True), version)
-        return jsonify({"vuelo": vuelo}), 200
+        raise ErrorAPI('flujo_retirado', 'Usa /api/sistema con asientos numerados y Stripe TEST.', 410)
 
     @app.route("/api/vuelos/<vuelo_id>", methods=["DELETE"])
     @requiere_administrador
     def eliminar_vuelo(vuelo_id):
-        version = validar_version_vuelo(request.get_json(silent=True))
-        repository.eliminar_vuelo(vuelo_id, version)
-        return jsonify({"mensaje": "Vuelo eliminado correctamente."}), 200
+        raise ErrorAPI('flujo_retirado', 'Usa /api/sistema con asientos numerados y Stripe TEST.', 410)
 
     @app.route("/api/usuarios/registro", methods=["POST"])
     def registrar_usuario():
@@ -150,17 +144,7 @@ def create_app(repository=None, jwt_secret=None):
     @app.route("/api/reservas", methods=["POST"])
     @requiere_autenticacion
     def crear_reserva():
-        vuelo_id, cantidad = validar_reserva(request.get_json(silent=True))
-        reserva = repository.crear_reserva(g.usuario["id"], vuelo_id, cantidad)
-        return jsonify({
-            "mensaje": "Reserva creada correctamente.",
-            "reserva_id": reserva["id"],
-            "subtotal": float(reserva["subtotal"]),
-            "iva": float(reserva["iva"]),
-            "porcentaje_iva": float(reserva["porcentaje_iva"]),
-            "total": float(reserva["total"]),
-            "estado": reserva["estado"],
-        }), 201
+        raise ErrorAPI('flujo_retirado', 'Usa /api/sistema con asientos numerados y Stripe TEST.', 410)
 
     @app.route("/api/reservas/<reserva_id>", methods=["GET"])
     @requiere_autenticacion
@@ -204,11 +188,10 @@ def create_app(repository=None, jwt_secret=None):
     @app.route("/api/reservas/<reserva_id>", methods=["DELETE"])
     @requiere_autenticacion
     def cancelar_reserva(reserva_id):
-        reserva = repository.cancelar_reserva(reserva_id, g.usuario["id"])
-        if reserva is None:
-            raise ErrorAPI("reserva_no_encontrada", "No se encontro la reserva solicitada.", 404)
-        return jsonify({"mensaje": "Reserva cancelada correctamente.", "reserva_id": reserva["id"], "estado": reserva["estado"]}), 200
+        raise ErrorAPI('flujo_retirado', 'Usa /api/sistema con asientos numerados y Stripe TEST.', 410)
 
+    from backend.sistema_http import register_system
+    register_system(app, repository, requiere_autenticacion, requiere_administrador, stripe_provider)
     return app
 
 

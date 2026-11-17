@@ -98,11 +98,11 @@ class _AdminPageState extends State<AdminPage> {
         canPop: false,
         child: AlertDialog(
           title: Text(
-            reservado ? 'No se puede eliminar este vuelo' : 'El vuelo cambió',
+            reservado ? 'Vuelo con reservas' : 'El vuelo cambió',
           ),
           content: Text(
             reservado
-                ? 'Este vuelo tiene reservas activas y no puede eliminarse. '
+                ? 'Este vuelo tiene reservas activas y no puede modificarse ni eliminarse. '
                       'Al aceptar actualizaremos la lista.'
                 : 'Otra operación modificó o retiró este vuelo. '
                       'Al aceptar cargaremos los datos actuales. '
@@ -189,6 +189,7 @@ class _AdminPageState extends State<AdminPage> {
   }
 
   void _editarVuelo(Vuelo vuelo) {
+    if (vuelo.tieneReservas) return;
     if (_ocupado) return;
     final valores = [
       vuelo.origen,
@@ -280,7 +281,7 @@ class _AdminPageState extends State<AdminPage> {
   }
 
   Future<void> _eliminarVuelo(Vuelo vuelo) async {
-    if (_ocupado) return;
+    if (_ocupado || vuelo.tieneReservas) return;
     final confirmado = await showDialog<bool>(
       context: context,
       builder: (contexto) => AlertDialog(
@@ -611,7 +612,7 @@ class _AdminPageState extends State<AdminPage> {
                                 children: [
                                   TextButton.icon(
                                     key: ValueKey('edit-flight-${vuelo.id}'),
-                                    onPressed: _ocupado
+                                    onPressed: _ocupado || vuelo.tieneReservas
                                         ? null
                                         : () => _editarVuelo(vuelo),
                                     icon: const Icon(Icons.edit_outlined),
@@ -619,7 +620,7 @@ class _AdminPageState extends State<AdminPage> {
                                   ),
                                   TextButton.icon(
                                     key: ValueKey('delete-flight-${vuelo.id}'),
-                                    onPressed: _ocupado
+                                    onPressed: _ocupado || vuelo.tieneReservas
                                         ? null
                                         : () => _eliminarVuelo(vuelo),
                                     icon: const Icon(Icons.delete_outline),

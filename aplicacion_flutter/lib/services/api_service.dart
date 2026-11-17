@@ -36,6 +36,32 @@ class ApiService {
     _usuarioActual = null;
   }
 
+  Future<dynamic> solicitarSistema(
+    String metodo,
+    String ruta, {
+    Map<String, dynamic>? cuerpo,
+    Map<String, String>? parametros,
+    bool requiereToken = true,
+  }) async {
+    final solicitud = http.Request(metodo, _url(ruta, parametros: parametros))
+      ..headers.addAll(_encabezados(requiereToken: requiereToken));
+    if (cuerpo != null) solicitud.body = jsonEncode(cuerpo);
+    final flujo = await _cliente
+        .send(solicitud)
+        .timeout(const Duration(seconds: 90));
+    return _decodificar(await http.Response.fromStream(flujo));
+  }
+
+  Future<String> solicitarXmlSistema(String ruta) async {
+    final headers = _encabezados(requiereToken: true)
+      ..['Accept'] = 'application/xml';
+    final respuesta = await _cliente.get(_url(ruta), headers: headers);
+    if (respuesta.statusCode < 200 || respuesta.statusCode >= 300) {
+      _decodificar(respuesta);
+    }
+    return utf8.decode(respuesta.bodyBytes);
+  }
+
   Future<Map<String, dynamic>> registrarUsuario({
     required String nombre,
     required String correo,

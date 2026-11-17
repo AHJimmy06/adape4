@@ -7,3 +7,8 @@ gunicorn>=23.0,<24
 # Dependencias de pruebas
 pytest>=8.0,<10
 
+
+# Stripe SDK syntax verified against v17; IANA timezones on Windows
+stripe==17.0.0
+tzdata>=2025.2
+psycopg[binary]>=3.2,<4

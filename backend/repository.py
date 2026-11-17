@@ -68,7 +68,7 @@ class RepositorioSupabase:
             if "VUELO_MODIFICADO" in mensaje:
                 raise ErrorAPI("vuelo_modificado", "El vuelo cambio mientras lo editabas. Actualiza la lista e intenta de nuevo.", 409) from error
             if "VUELO_CON_RESERVAS" in mensaje:
-                raise ErrorAPI("vuelo_con_reservas", "No se puede eliminar un vuelo con asientos reservados.", 409) from error
+                raise ErrorAPI("vuelo_con_reservas", "No se puede modificar ni eliminar un vuelo con asientos reservados.", 409) from error
             if "VUELO_INEXISTENTE" in mensaje:
                 raise ErrorAPI("vuelo_no_encontrado", "No se encontro el vuelo solicitado.", 404) from error
             raise
@@ -134,3 +134,23 @@ class RepositorioSupabase:
                 return None
             raise
         return self._primero(respuesta)
+
+    def sistema_operar(self, accion, usuario_id, datos):
+        try:
+            return self.cliente.rpc('sistema_operar', {'p_accion': accion, 'p_usuario': usuario_id, 'p_datos': datos}).execute().data
+        except Exception as error:
+            message = str(error)
+            categories = [('PROHIBIDO:', 'acceso_denegado', 403), ('NO_ENCONTRADO:', 'no_encontrado', 404),
+                          ('CONFLICTO:', 'conflicto', 409), ('INVALIDO:', 'datos_invalidos', 400)]
+            for marker, code, status in categories:
+                if marker in message:
+                    # PostgREST exception text may contain SQL internals; don't expose it.
+                    messages = {403: 'Se requiere el rol ADMIN.', 404: 'No se encontró el recurso solicitado.',
+                                409: 'El recurso cambió, está ocupado o la operación ya existe. Actualiza los datos.',
+                                400: 'Los datos no cumplen las reglas del sistema.'}
+                    raise ErrorAPI(code, messages[status], status) from error
+            if '23505' in message or 'unique constraint' in message.lower():
+                raise ErrorAPI('conflicto', 'Ya existe un registro con esos datos.', 409) from error
+            if any(code in message for code in ('22007', '22P02', '23514', '23503', '22023')):
+                raise ErrorAPI('datos_invalidos', 'Los datos no cumplen las restricciones del sistema.', 400) from error
+            raise
