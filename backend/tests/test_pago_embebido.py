@@ -28,7 +28,7 @@ def embedded_client(monkeypatch):
                  asientos=[{'codigo': '1A'}])
     session = dict(id='cs_test_owned', livemode=False, mode='payment', currency='usd', amount_total=1000,
                    client_reference_id=order['id'], metadata=dict(app='aerotech', pedido_id=order['id'], usuario_id='usuario-1'),
-                   status='open', payment_status='unpaid', ui_mode='embedded', client_secret='cs_test_owned_secret_example')
+                   status='open', payment_status='unpaid', ui_mode='embedded_page', client_secret='cs_test_owned_secret_example')
     def rpc(action, user, data):
         if action == 'pedido':
             if data['id'] != order['id'] or user != order['usuario_id']:
@@ -106,7 +106,7 @@ def test_sql_pending_is_held_not_reserved_until_provider_confirms(core, monkeypa
     monkeypatch.setenv('STRIPE_PUBLISHABLE_KEY', 'pk_test_simulated')
     order = create(client, headers[1], ['1A']).json['pedido']
     session = provider.sessions[order['id']]
-    session.update(ui_mode='embedded', client_secret=session['id'] + '_secret_simulated')
+    session.update(ui_mode='embedded_page', client_secret=session['id'] + '_secret_simulated')
     path = '/api/sistema/pedidos/' + order['id'] + '/pago-embebido'
     assert client.post(path, headers=headers[2]).status_code == 404
     assert client.post(path, headers=headers[1]).status_code == 200
@@ -138,7 +138,7 @@ def test_new_checkout_embeds_without_redirect_and_legacy_params_stay_stable(monk
     order['solicitud'] = {'checkout_ui': 'embedded'}
     provider.checkout(order)
     params, options = captured[-1]
-    assert params['ui_mode'] == 'embedded'
+    assert params['ui_mode'] == 'embedded_page'
     assert params['redirect_on_completion'] == 'never'
     assert not {'success_url', 'cancel_url', 'return_url'} & params.keys()
     assert params['payment_method_types'] == ['card']

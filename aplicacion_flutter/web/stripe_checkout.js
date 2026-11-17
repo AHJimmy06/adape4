@@ -6,7 +6,7 @@
     if (window.Stripe) return Promise.resolve();
     if (!loading) loading = new Promise((resolve, reject) => {
       const script = document.createElement('script');
-      script.src = 'https://js.stripe.com/v3/';
+      script.src = 'https://js.stripe.com/endive/stripe.js';
       script.onload = resolve;
       script.onerror = () => reject(new Error('stripe_unavailable'));
       document.head.appendChild(script);
@@ -21,7 +21,12 @@
         await loadStripe();
         if (state.cancelled) return;
         if (!key.startsWith('pk_test_')) throw new Error('test_mode_required');
-        const checkout = await window.Stripe(key).initEmbeddedCheckout({
+        const stripe = window.Stripe(key);
+        const createEmbedded = typeof stripe.createEmbeddedCheckoutPage === 'function'
+          ? stripe.createEmbeddedCheckoutPage.bind(stripe)
+          : stripe.initEmbeddedCheckout?.bind(stripe);
+        if (!createEmbedded) throw new Error('embedded_checkout_unavailable');
+        const checkout = await createEmbedded({
           fetchClientSecret: async () => secret,
           onComplete: () => { if (!state.cancelled) complete(); },
         });

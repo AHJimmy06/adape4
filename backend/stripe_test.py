@@ -57,7 +57,7 @@ class StripeTest:
         if (order.get('solicitud') or {}).get('checkout_ui') == 'embedded':
             params.pop('success_url')
             params.pop('cancel_url')
-            params.update(ui_mode='embedded', redirect_on_completion='never')
+            params.update(ui_mode='embedded_page', redirect_on_completion='never')
         # Provider maximum lifetime permits deterministic crash recovery. The
         # 35-minute business hold expires by verified Stripe.expire, never clock-only.
         return self.call(self.client.v1.checkout.sessions.create, params,

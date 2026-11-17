@@ -50,8 +50,8 @@ def sdk_provider(monkeypatch):
                    amount_total=int(get('line_items[0][price_data][unit_amount]')),status='open',payment_status='unpaid',
                    payment_intent=None,client_reference_id=get('client_reference_id'),expires_at=int(get('expires_at')),
                    metadata={k:get('metadata['+k+']') for k in ('app','pedido_id','usuario_id')},url='https://checkout.stripe.com/c/pay/'+ident)
-                if body.get('ui_mode') == ['embedded']:
-                    result.update(ui_mode='embedded', client_secret=ident+'_secret_simulated', url=None)
+                if body.get('ui_mode') == ['embedded_page']:
+                    result.update(ui_mode='embedded_page', client_secret=ident+'_secret_simulated', url=None)
                 state['sessions'][ident]=result
                 flag='disconnect_checkout'
             elif self.path == '/v1/refunds':
@@ -181,7 +181,7 @@ def test_sdk_embedded_checkout_has_no_redirect_and_preserves_idempotency(sdk_pro
     assert first['id'] == again['id'] and len(state['sessions']) == 1
     assert first['client_secret'].startswith(first['id'] + '_secret_')
     for body in state['bodies']:
-        assert body['ui_mode'] == ['embedded']
+        assert body['ui_mode'] == ['embedded_page']
         assert body['redirect_on_completion'] == ['never']
         assert not {'success_url', 'cancel_url', 'return_url'} & body.keys()
 
