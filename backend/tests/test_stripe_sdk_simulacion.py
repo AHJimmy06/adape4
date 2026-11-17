@@ -53,7 +53,7 @@ def sdk_provider(monkeypatch):
                 flag='disconnect_checkout'
             elif self.path == '/v1/refunds':
                 ident='re_'+uuid4().hex
-                result=dict(id=ident,object='refund',livemode=False,currency='usd',status='succeeded',amount=int(get('amount')),
+                result=dict(id=ident,object='refund',currency='usd',status='succeeded',amount=int(get('amount')),
                     payment_intent=get('payment_intent'),metadata={k:get('metadata['+k+']') for k in ('app','cancelacion_id','pedido_id')})
                 state['refunds'][ident]=result
                 flag='disconnect_refund'
@@ -166,3 +166,55 @@ def test_production_client_pins_webhook_compatible_api_and_card_only(sdk_provide
     assert state['bodies'][0] == state['bodies'][1]
     assert state['requests'][0][1] == state['requests'][1][1] == 'aerotech-checkout-' + order['id']
     assert first['id'] == repeated['id'] and len(state['sessions']) == 1
+
+
+def test_sdk_actual_refund_shape_without_livemode_and_partial_replay(core, sdk_provider):
+    conn, repo, _, app, client, users, headers = core
+    provider, state = sdk_provider
+    app.extensions['sistema'].provider = provider
+    order = create(client, headers[1], ['1A', '3A']).json['pedido']
+    assert order['total_centavos'] == 20585
+    session = next(iter(state['sessions'].values()))
+    session.update(status='complete', payment_status='paid', payment_intent='pi_partial_verified')
+    paid = client.get('/api/sistema/pedidos/' + order['id'], headers=headers[1]).json['pedido']
+    path = f"/api/sistema/reservas/{paid['reserva_id']}/cancelaciones"
+    body = dict(asientos=['3A'], clave_operacion=str(uuid4()))
+    # Reproduce the live incident's durable boundary: Stripe already succeeded
+    # but the application rejected its shape before saving refund_id.
+    cancellation = repo.sistema_operar('cancelar', users[1], dict(id=paid['reserva_id'], **body))
+    external = provider.refund(cancellation)
+    assert external['status'] == 'succeeded' and 'livemode' not in external
+    assert conn.execute('select refund_id, intento from public.at_cancelaciones where id=%s', (cancellation['id'],)).fetchone() == (None, 1)
+    response = client.post(path, headers=headers[1], json=body)
+    assert response.status_code == 200, response.json
+    refund = next(iter(state['refunds'].values()))
+    assert 'livemode' not in refund and refund['object'] == 'refund'
+    assert refund['amount'] == 6785 and refund['status'] == 'succeeded'
+    repeated = client.post(path, headers=headers[1], json=body)
+    assert repeated.status_code == 200
+    assert repeated.json['reserva']['reembolsado_centavos'] == 6785
+    assert repeated.json['reserva']['cantidad_activa'] == 1
+    assert repeated.json['reserva']['total_centavos'] == 20585
+    assert len(state['refunds']) == 1
+    refund_calls = [entry for entry in state['requests'] if entry[0] == '/v1/refunds']
+    assert len(refund_calls) == 2 and refund_calls[0][1] == refund_calls[1][1]
+    assert response.json['cancelacion']['refund_id'] == external['id']
+    assert response.json['cancelacion']['intento'] == 1
+    assert conn.execute('select codigo from public.at_asientos where pedido_id=%s', (order['id'],)).fetchall() == [('1A',)]
+
+
+@pytest.mark.parametrize('change', [{'livemode': True}, {'payment_status': 'unpaid'}, {'payment_intent': 'pi_other'}])
+def test_refund_requires_current_verified_test_paid_checkout_before_money(core, sdk_provider, change):
+    conn, _, _, app, client, _, headers = core
+    provider, state = sdk_provider
+    app.extensions['sistema'].provider = provider
+    order = create(client, headers[1], ['1A']).json['pedido']
+    session = next(iter(state['sessions'].values()))
+    session.update(status='complete', payment_status='paid', payment_intent='pi_original_verified')
+    paid = client.get('/api/sistema/pedidos/' + order['id'], headers=headers[1]).json['pedido']
+    session.update(change)
+    response = client.post(f"/api/sistema/reservas/{paid['reserva_id']}/cancelaciones", headers=headers[1],
+                           json=dict(asientos=['1A'], clave_operacion=str(uuid4())))
+    assert response.status_code == 409, response.json
+    assert state['refunds'] == {}
+    assert conn.execute('select count(*) from public.at_asientos where pedido_id=%s', (order['id'],)).fetchone()[0] == 1

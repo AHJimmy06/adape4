@@ -1,31 +1,27 @@
 # AeroTech — cliente Flutter
 
-Frontend en español con landing, modelos 3D locales, autenticación y reservas. La API se ejecuta en Render y PostgreSQL en Supabase; para usar la aplicación no hace falta iniciar el backend local.
+Cliente en español con landing, globo 3D local, autenticación, catálogos administrativos, asientos numerados persistentes y pagos **Stripe TEST**. La API está en Render y la base en Supabase: para utilizarla solo debe iniciar Flutter.
 
-## Iniciar el frontend
-
-Desde esta carpeta, con Flutter instalado:
+## Iniciar
 
 ```powershell
 flutter pub get
 flutter run -d chrome --dart-define=API_BASE_URL=https://adape4-reservas-vuelos-api.onrender.com
 ```
 
-`API_BASE_URL` configura la API al compilar. Sin ese parámetro, el código conserva `http://10.0.2.2:5000` para desarrollo Android con backend local. No contiene credenciales de Supabase ni claves administrativas. La sesión JWT permanece únicamente en memoria.
+Ejecute los comandos desde `aplicacion_flutter`. Para compartir, utilice el ZIP sin dependencias y vuelva a ejecutar `flutter pub get`. No se incluyen claves ni sesiones.
 
-## Funciones
+`API_BASE_URL` se establece al compilar. Sin el parámetro se conserva `http://10.0.2.2:5000`, reservado para un backend local desde el emulador Android. No es la dirección de Render.
 
-- Landing adaptable antes del login; el globo reutiliza los recursos 3D del proyecto. Con movimiento reducido se muestra el mismo modelo sin rotación automática.
-- Registro y login con controles en tiempo real y errores dentro del formulario.
-- Consulta de vuelos, reservas para varios pasajeros según disponibilidad, cancelación y comprobante XML.
-- La selección numerada de la cabina es una preferencia visual; se persiste la cantidad, no una asignación real de asientos.
-- ADMIN: crear, modificar y eliminar vuelos, además de promover usuarios registrados.
-- La edición y eliminación envían la versión consultada. Si una reserva u otro administrador cambia el vuelo, se muestra un conflicto y se actualizan los datos antes de continuar.
-- No se puede eliminar un vuelo con reservas activas. La eliminación es lógica para conservar el historial de reservas canceladas.
+## Flujo disponible
 
-## Validaciones de vuelos
-
-Origen/destino usan `Ciudad, País`. Fecha posterior a hoy en Ecuador mediante calendario; llegada posterior a salida en la misma fecha. Precio con máximo dos decimales, sin letras; asientos enteros. Un vuelo agotado admite edición con cero asientos restantes. El backend vuelve a validar todas las reglas y los permisos.
+- USER: registro/login, filtros por aeropuertos, mapa nacional o globo internacional, cabina completa por clases.
+- Selección por doble clic o Enter; cada etiqueta pertenece a un asiento real del vuelo. El servidor impide la doble venta.
+- Pedido con retención temporal, Checkout externo TEST y confirmación exclusivamente del servidor. Regresar de Stripe no acredita pago.
+- Reservas con etiquetas, clases e importes históricos; cancelación parcial por asientos y reembolso proporcional TEST; XML vertical académico.
+- ADMIN: aeropuertos con coordenadas/zona IANA, aviones con distribución por clases, rutas, vuelos, tarifas y promoción de usuarios.
+- Las ediciones usan versión; los vuelos comprometidos por retenciones, compras o devoluciones pendientes no pueden modificarse/desactivarse.
+- Horarios civiles de cada aeropuerto, salida en día local posterior a hoy y llegada UTC posterior a salida, incluso cruzando días/zonas.
 
 ## Pruebas
 
@@ -34,4 +30,6 @@ flutter test --no-pub
 flutter analyze --no-pub
 ```
 
-Detalles del contrato y concurrencia en `../docs/crud-vuelos.md` (en la entrega publicada, `../documentacion/crud-vuelos.md`).
+Guía, contrato, arquitectura y evidencias: `../docs/ape4/`. Las capturas con sufijo `local-aislado` corresponden al entorno de pruebas, no a la base remota.
+
+**Nunca use tarjetas reales:** la pasarela y los reembolsos son de prueba. El IVA del 15 % y el XML no constituyen facturación fiscal.

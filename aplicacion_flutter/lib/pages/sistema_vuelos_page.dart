@@ -137,13 +137,16 @@ class _SistemaVuelosPageState extends State<SistemaVuelosPage> {
       title: const Text('AeroTech · Vuelos'),
       actions: [
         TextButton(
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute<void>(
-              builder: (_) =>
-                  SistemaReservasPage(apiService: widget.apiService),
-            ),
-          ),
+          onPressed: () =>
+              Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) =>
+                      SistemaReservasPage(apiService: widget.apiService),
+                ),
+              ).then((_) {
+                if (mounted) _cargar();
+              }),
           child: const Text('Mis reservas'),
         ),
         if (widget.apiService.esAdministrador)

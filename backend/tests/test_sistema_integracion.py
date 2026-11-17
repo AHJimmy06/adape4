@@ -99,7 +99,7 @@ class FakeStripe:
     def refund(self, cancellation):
         self.refund_calls += 1
         attempt = cancellation['id'] + '-' + str(cancellation.get('intento', 1))
-        item = self.refunds.setdefault(attempt, dict(id='re_' + attempt, livemode=False,
+        item = self.refunds.setdefault(attempt, dict(id='re_' + attempt, object='refund',
           payment_intent=cancellation['payment_intent'], amount=cancellation['importe_centavos'], currency='usd', status=self.status,
           metadata=dict(app='aerotech', cancelacion_id=cancellation['id'], pedido_id=cancellation['pedido_id'])))
         if self.refund_timeout:

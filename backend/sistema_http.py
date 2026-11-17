@@ -87,12 +87,27 @@ class Sistema:
     def refund(self, cancellation):
         if cancellation['estado'] == 'cancelado':
             return cancellation
+        # Refund has no livemode field in Stripe's schema. Establish TEST proof
+        # from the original persisted Checkout binding, never from an invented
+        # Refund attribute or a client-supplied payment reference.
+        order = self.owned_order(cancellation['pedido_id'], cancellation['usuario_id'])
+        if not order.get('session_id'):
+            raise ErrorAPI('reembolso_no_verificado', 'El pedido no tiene una sesión de pago verificada.', 409)
+        session = self.provider.retrieve(order['session_id'])
+        self.verify_session(order, session)
+        if (session.get('payment_status') != 'paid'
+                or session.get('payment_intent') != order.get('payment_intent')
+                or session.get('payment_intent') != cancellation['payment_intent']):
+            raise ErrorAPI('reembolso_no_verificado', 'El cargo no coincide con el pago confirmado del pedido.', 409)
         if cancellation.get('refund_id'):
             result = self.provider.retrieve_refund(cancellation['refund_id'])
         else:
             result = self.provider.refund(cancellation)
         meta = result.get('metadata') or {}
-        if (result.get('livemode') is not False or result.get('currency') != 'usd'
+        if (result.get('object') != 'refund' or not str(result.get('id', '')).startswith('re_')
+                or ('livemode' in result and result['livemode'] is not False)
+                or (cancellation.get('refund_id') and result['id'] != cancellation['refund_id'])
+                or result.get('currency') != 'usd'
                 or result.get('amount') != cancellation['importe_centavos']
                 or result.get('payment_intent') != cancellation['payment_intent']
                 or meta.get('app') != 'aerotech' or meta.get('cancelacion_id') != cancellation['id']

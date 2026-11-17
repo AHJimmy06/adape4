@@ -89,6 +89,41 @@ http.Response json(Object data, [int status = 200]) => http.Response(
   headers: {'content-type': 'application/json'},
 );
 void main() {
+  testWidgets('volver de reservas actualiza disponibilidad sin perder sesión', (
+    tester,
+  ) async {
+    var consultas = 0;
+    final api = ApiService(
+      client: MockClient((r) async {
+        expect(r.headers['Authorization'], 'Bearer token');
+        if (r.url.path.endsWith('/vuelos')) {
+          consultas++;
+          return json({
+            'vuelos': [
+              {...flight, 'asientos_disponibles': consultas == 1 ? 3 : 4},
+            ],
+          });
+        }
+        if (r.url.path.endsWith('/aeropuertos'))
+          return json({
+            'aeropuertos': [airport],
+          });
+        if (r.url.path.endsWith('/reservas')) return json({'reservas': []});
+        return json({'pedidos': []});
+      }),
+    )..establecerToken('token');
+    await tester.pumpWidget(
+      MaterialApp(home: SistemaVuelosPage(apiService: api)),
+    );
+    await tester.pumpAndSettle();
+    expect(consultas, 1);
+    await tester.tap(find.text('Mis reservas'));
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(consultas, 2);
+    expect(find.textContaining('4 disponibles'), findsOneWidget);
+  });
   test('checkout allows only HTTPS Stripe hosted origin', () {
     expect(
       esCheckoutSeguro(Uri.parse('https://checkout.stripe.com/c/pay/test')),

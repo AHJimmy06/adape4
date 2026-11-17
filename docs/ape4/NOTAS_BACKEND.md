@@ -129,3 +129,14 @@ La regresión usa el constructor productivo y el SDK real contra HTTP local, cap
 Un pedido retenido tras ese 400 no se considera pagado ni se libera por deducción. Se debe revisar la operación exacta y cualquier sesión asociada en Stripe. El código conserva pedido y clave; no genera automáticamente una clave distinta para evitar una respuesta guardada del proveedor. Si la respuesta anterior permanece idempotentemente guardada, corresponde una recuperación operativa explícita y verificada, no variar silenciosamente el protocolo de inventario/pago.
 
 Verificación posterior al pin: **119 pruebas aprobadas en 84,35 segundos**, incluyendo PostgreSQL real y SDK Stripe real contra HTTP local; regresión enfocada del SDK: **5 aprobadas**.
+
+
+## Corrección de la forma real de Refund
+
+La respuesta oficial de [Refund](https://docs.stripe.com/api/refunds/object) no incluye `livemode`. La integración anterior lo exigía y rechazaba una devolución TEST ya aprobada. La corrección no inventa ese atributo ni elimina la comprobación de modo: antes de crear o recuperar una devolución, recupera por SDK el Checkout persistido y comprueba `livemode=false`, ID de sesión, propietario, metadatos, moneda, importe total, estado pagado y coincidencia exacta del PaymentIntent con el pedido y la cancelación. Después valida tipo e ID de Refund, moneda, importe, PaymentIntent y metadatos de aplicación/pedido/cancelación; un `livemode=true` inesperado sigue rechazándose.
+
+Si Stripe ya devolvió HTTP 200 pero la aplicación dejó la cancelación pendiente y sin `refund_id`, el reintento utiliza exactamente la misma operación, intento y clave Stripe. Recupera la devolución existente y solo libera el asiento al confirmar `succeeded`. No crea otra generación ni vuelve a mover dinero. El mock del SDK representa ahora el esquema real sin `livemode`; la regresión reproduce el corte lógico después de aprobar el reembolso externo y antes de persistirlo localmente.
+
+Actualización del incidente previo de versión: se confirmó externamente `Idempotent-Replayed: true` para el pedido antiguo con 400, incluso usando Dahlia. Ese caso concreto requiere revisión operativa y no más reintentos automáticos ni rotación de clave. La regla documental general sobre errores de validación no sustituye esa evidencia real.
+
+Verificación de la corrección Refund: **123 pruebas aprobadas en 93,56 segundos** (PostgreSQL real y SDK real contra HTTP local). La regresión confirma una devolución externa única de 6785 centavos, recuperación con la misma clave e intento 1, liberación exclusiva de 3A y conservación del asiento 1A y total original de 20585 centavos.
