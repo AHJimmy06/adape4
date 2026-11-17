@@ -7,6 +7,7 @@ from backend.models import ErrorAPI
 from backend.sistema_validacion import (identifier, integer, invalid, object_body,
                                          seat_codes, validate_catalog)
 from backend.stripe_test import StripeTest
+from backend.vuelos_programacion import register_programaciones
 
 
 class Sistema:
@@ -21,7 +22,7 @@ class Sistema:
 
     @staticmethod
     def public_order(order):
-        hidden = {'usuario_id', 'session_id', 'payment_intent', 'solicitud', 'incidencia'}
+        hidden = {'usuario_id', 'session_id', 'payment_intent', 'solicitud', 'incidencia', 'client_secret'}
         result = {k: v for k, v in order.items() if k not in hidden}
         result.update(moneda='usd', mensaje=order.get('incidencia'))
         return result
@@ -142,6 +143,7 @@ class Sistema:
 
 
 def register_system(app, repository, authenticated, administrator, stripe_provider=None):
+    register_programaciones(app, repository, administrator)
     system = Sistema(repository, stripe_provider)
     app.extensions['sistema'] = system
     singular = {'aeropuertos': 'aeropuerto', 'aviones': 'avion', 'rutas': 'ruta', 'vuelos': 'vuelo'}
@@ -202,9 +204,26 @@ def register_system(app, repository, authenticated, administrator, stripe_provid
     @authenticated
     def create_order():
         system.provider.ready()  # missing configuration creates no hold
+        if isinstance(system.provider, StripeTest):
+            system.provider.publishable_key()  # do not hold seats for an unusable form
         data = object_body(request.get_json(silent=True))
-        order = system.rpc('crear_pedido', g.usuario['id'], vuelo_id=identifier(data.get('vuelo_id')),
-                           asientos=seat_codes(data.get('asientos')), clave_operacion=identifier(data.get('clave_operacion')))
+        selection = dict(vuelo_id=identifier(data.get('vuelo_id')), asientos=seat_codes(data.get('asientos')),
+                         clave_operacion=identifier(data.get('clave_operacion')))
+        try:
+            order = system.rpc('crear_pedido', g.usuario['id'], **selection, checkout_ui='embedded')
+        except ErrorAPI as error:
+            if error.estado_http != 409:
+                raise
+            # Retrying a request sent before this rollout must recover the
+            # original session, not collide merely because the UI marker is new.
+            previous = next((p for p in system.rpc('pedidos', g.usuario['id']).get('pedidos', [])
+                             if p.get('clave_operacion') == selection['clave_operacion']), None)
+            if not previous:
+                raise
+            previous = system.owned_order(previous['id'], g.usuario['id'])
+            if previous.get('solicitud') != selection:
+                raise error
+            order = previous
         order = system.checkout(order)
         if datetime.now(timezone.utc) >= datetime.fromisoformat(order['vence_en'].replace('Z', '+00:00')):
             order = system.reconcile(order)
@@ -220,6 +239,34 @@ def register_system(app, repository, authenticated, administrator, stripe_provid
     def order(order_id):
         result = system.reconcile(system.owned_order(order_id, g.usuario['id']))
         return jsonify(pedido=system.public_order(result))
+
+    @app.post('/api/sistema/pedidos/<order_id>/pago-embebido')
+    @authenticated
+    def embedded_payment(order_id):
+        # Client secrets belong only in this authenticated, non-cacheable
+        # response, never in order lists, logs, URLs or persisted public fields.
+        result = system.owned_order(order_id, g.usuario['id'])
+        key = StripeTest.publishable_key()
+        result = system.reconcile(result)
+        if result['estado'] != 'pendiente_pago':
+            invalid('El pedido ya no está pendiente de pago. Consulta tus reservas.', 'pedido_no_pagable', 409)
+        session = system.provider.retrieve(result['session_id'])
+        system.verify_session(result, session)
+        if session.get('status') != 'open' or session.get('payment_status') == 'paid':
+            result = system.reconcile(result, session)
+            invalid('El pago cambió de estado. Consulta tus reservas.', 'pedido_no_pagable', 409)
+        if session.get('ui_mode') not in ('embedded', 'embedded_page'):
+            # Existing hosted sessions cannot be converted in place. Never
+            # create a second payable session or release an uncertain payment.
+            invalid('Este pedido se inició con el pago anterior. Abandónalo y vuelve a seleccionar tus asientos para pagar dentro de AeroTech.',
+                    'pedido_checkout_anterior', 409)
+        secret = session.get('client_secret')
+        if not isinstance(secret, str) or not secret.startswith(session['id'] + '_secret_'):
+            invalid('Stripe no devolvió un formulario de pago válido. Reintenta sin crear otro pedido.', 'pago_no_disponible', 503)
+        response = jsonify(pedido=system.public_order(result), client_secret=secret, publishable_key=key)
+        response.headers['Cache-Control'] = 'no-store, private'
+        response.headers['Pragma'] = 'no-cache'
+        return response
 
     @app.post('/api/sistema/pedidos/<order_id>/abandonar')
     @authenticated
@@ -297,4 +344,4 @@ def register_system(app, repository, authenticated, administrator, stripe_provid
     def stripe_return():
         return Response('<!doctype html><html lang="es"><meta charset="utf-8"><title>AeroTech</title>'
                         '<h1>Vuelve a AeroTech</h1><p>El retorno no confirma el pago. En la aplicación, '
-                        'selecciona Actualizar pago para verificarlo con Stripe.</p></html>', content_type='text/html; charset=utf-8')
+                        'la aplicación verificará automáticamente el estado con Stripe.</p></html>', content_type='text/html; charset=utf-8')

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../services/sistema_api.dart';
 import '../utils/checkout_operacion.dart';
+import '../utils/checkout_launcher.dart';
 import '../utils/formateador_xml.dart';
 import '../widgets/presentacion/dialogo_aerotech.dart';
 import '../theme/aerotech_theme.dart';
@@ -18,6 +19,7 @@ class SistemaReservasPage extends StatefulWidget {
 class _SistemaReservasPageState extends State<SistemaReservasPage> {
   late final _api = SistemaApi(widget.apiService);
   List<Map<String, dynamic>> _reservas = [];
+  List<Map<String, dynamic>> _pedidos = [];
   bool _busy = false;
   String? _error;
   final Map<String, String> _retryKeys = {};
@@ -35,11 +37,76 @@ class _SistemaReservasPageState extends State<SistemaReservasPage> {
     try {
       final data = await _api.lista('/reservas', 'reservas');
       if (mounted) setState(() => _reservas = data);
+      final pedidos = await _api.lista('/pedidos', 'pedidos');
+      if (mounted) {
+        setState(
+          () => _pedidos = pedidos
+              .where(
+                (p) => [
+                  'preparando_pago',
+                  'pendiente_pago',
+                  'revision_pago',
+                ].contains(p['estado']),
+              )
+              .toList(),
+        );
+      }
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _continuarPago(Map<String, dynamic> pedido) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (c) => DialogoAerotech(
+        title: 'Tu pedido pendiente',
+        subtitle: 'Continúa el pago sin volver a seleccionar tus asientos.',
+        icon: Icons.payments_outlined,
+        onClose: () => Navigator.pop(c),
+        actions: const [],
+        child: PedidoSistema(
+          api: _api,
+          pedido: pedido,
+          launcher: abrirCheckout,
+          onRefresh: _cargar,
+        ),
+      ),
+    );
+    if (mounted) await _cargar();
+  }
+
+  Widget _pendiente(Map<String, dynamic> p) {
+    final vuelo = p['vuelo'] as Map? ?? {};
+    final asientos = mapas(p['asientos']).map((s) => s['codigo']).join(', ');
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Pedido · ${vuelo['codigo'] ?? p['codigo_vuelo'] ?? 'Tu vuelo'}',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            Text('Asientos: $asientos'),
+            Text('Total: ${dinero(p['total_centavos'])}'),
+            const SizedBox(height: 8),
+            Text('Vence: ${fechaLegible(p['vence_en'], horaEcuador: true)}'),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: () => _continuarPago(p),
+              icon: const Icon(Icons.lock_outline),
+              label: const Text('Continuar pago'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _xml(Map<String, dynamic> reserva) async {
@@ -136,6 +203,18 @@ class _SistemaReservasPageState extends State<SistemaReservasPage> {
         children: [
           if (_busy) const LinearProgressIndicator(),
           if (_error != null) PanelMensaje(_error!, error: true),
+          if (_pedidos.isNotEmpty) ...[
+            Text(
+              'Pendientes de pago',
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Todavía no son reservas confirmadas. Continúa el pago o abandona el pedido para liberar sus asientos.',
+            ),
+            for (final p in _pedidos) _pendiente(p),
+            const SizedBox(height: 24),
+          ],
           if (!_busy && _reservas.isEmpty)
             const Text('Todavía no tienes reservas confirmadas.'),
           for (final r in _reservas) _reserva(r),

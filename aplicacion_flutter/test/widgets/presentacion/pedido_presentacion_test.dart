@@ -45,6 +45,7 @@ void main() {
     expect(find.text('USD 11.50'), findsOneWidget);
     expect(find.textContaining('pendiente_pago'), findsNothing);
     expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
   });
   testWidgets(
     'cambiar de cabina desplazada a pedido reinicia solo el paso visual',
@@ -117,6 +118,7 @@ void main() {
       expect(bodies.single['asientos'], ['7B']);
       expect(bodies.single['vuelo_id'], flight['id']);
       expect(bodies.single['clave_operacion'], isNotEmpty);
+      await tester.pumpWidget(const SizedBox());
     },
   );
 
@@ -154,5 +156,6 @@ void main() {
     expect(tester.getBottomRight(pay).dy, lessThanOrEqualTo(viewport.bottom));
     expect(pay.hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
   });
 }

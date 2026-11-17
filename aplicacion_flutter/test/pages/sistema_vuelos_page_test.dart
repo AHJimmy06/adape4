@@ -180,6 +180,13 @@ void main() {
             if (bodies.length == 1) throw http.ClientException('offline');
             return json({'pedido': order('pendiente_pago')}, 201);
           }
+          if (r.url.path.endsWith('/pago-embebido')) {
+            return json({
+              'pedido': order('pendiente_pago'),
+              'client_secret': 'cs_test_secret',
+              'publishable_key': 'pk_test_public',
+            });
+          }
           if (r.url.path.endsWith('/pedidos/p')) {
             orderGets++;
             return json({'pedido': order('pagado')});
@@ -234,9 +241,10 @@ void main() {
       expect(launched, 0);
       await tester.tap(find.text('Pagar con Stripe TEST'));
       await tester.pumpAndSettle();
-      expect(launched, 1);
+      expect(launched, 0);
       expect(find.textContaining('Pago confirmado'), findsNothing);
-      await tester.tap(find.text('Actualizar pago'));
+      expect(find.text('Actualizar pago'), findsNothing);
+      await tester.pump(const Duration(seconds: 5));
       await tester.pumpAndSettle();
       expect(orderGets, 1);
       expect(find.text('Pago confirmado · reserva emitida'), findsOneWidget);

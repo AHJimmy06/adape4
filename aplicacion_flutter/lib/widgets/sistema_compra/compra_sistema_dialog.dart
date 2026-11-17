@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../services/sistema_api.dart';
@@ -5,6 +7,7 @@ import '../../services/api_service.dart';
 import '../../utils/checkout_operacion.dart';
 import '../../utils/checkout_launcher.dart';
 import 'cabina_sistema.dart';
+import 'stripe_embebido.dart';
 import '../../theme/aerotech_theme.dart';
 import '../presentacion/dialogo_aerotech.dart';
 
@@ -130,11 +133,10 @@ class _CompraSistemaDialogState extends State<CompraSistemaDialog> {
     icon: _pedido == null
         ? Icons.airline_seat_recline_normal
         : Icons.receipt_long_outlined,
+    onClose: () {
+      if (!_busy) Navigator.pop(context);
+    },
     actions: [
-      TextButton(
-        onPressed: _busy ? null : () => Navigator.pop(context),
-        child: const Text('Cerrar'),
-      ),
       if (_pedido == null)
         FilledButton(
           onPressed: _busy || _seleccion.isEmpty ? null : _comprar,
@@ -181,11 +183,14 @@ class PedidoSistema extends StatefulWidget {
     required this.pedido,
     required this.launcher,
     required this.onRefresh,
+    this.stripeBuilder,
   });
   final SistemaApi api;
   final Map<String, dynamic> pedido;
   final CheckoutLauncher launcher;
   final VoidCallback onRefresh;
+  final Widget Function(String secret, String key, VoidCallback onComplete)?
+  stripeBuilder;
   @override
   State<PedidoSistema> createState() => _PedidoSistemaState();
 }
@@ -195,16 +200,78 @@ class _PedidoSistemaState extends State<PedidoSistema> {
   bool _busy = false;
   String? _error;
   final _abandonarKey = nuevaClaveOperacion();
+  Timer? _poll;
+  var _pollCount = 0;
+  String? _clientSecret, _publishableKey;
+  bool get _pendiente => [
+    'preparando_pago',
+    'pendiente_pago',
+    'revision_pago',
+  ].contains(_pedido['estado']);
+  @override
+  void initState() {
+    super.initState();
+    _programar();
+  }
+
+  void _programar() {
+    _poll?.cancel();
+    if (!_pendiente || !mounted) return;
+    _poll = Timer(
+      Duration(
+        seconds: _pollCount < 6
+            ? 5
+            : _pollCount < 30
+            ? 15
+            : 30,
+      ),
+      () async {
+        _pollCount++;
+        await _actualizar(silencioso: true);
+        _programar();
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
+  }
+
   @override
   void didUpdateWidget(covariant PedidoSistema old) {
     super.didUpdateWidget(old);
-    if (old.pedido != widget.pedido) _pedido = widget.pedido;
+    if (old.pedido['id'] != widget.pedido['id']) {
+      _pedido = widget.pedido;
+      _clientSecret = null;
+      _publishableKey = null;
+      _pollCount = 0;
+      _programar();
+    } else if (_pendiente ||
+        ![
+          'preparando_pago',
+          'pendiente_pago',
+          'revision_pago',
+        ].contains(widget.pedido['estado'])) {
+      _pedido = widget.pedido;
+      if (!_pendiente) _poll?.cancel();
+    }
   }
 
-  Future<void> _actualizar({bool abandonar = false}) async {
+  Future<void> _actualizar({
+    bool abandonar = false,
+    bool silencioso = false,
+  }) async {
+    if (_busy) return;
+    final anterior = _pedido['estado'];
     setState(() {
       _busy = true;
-      _error = null;
+      if (!silencioso) _error = null;
+      if (abandonar) {
+        _clientSecret = null;
+        _publishableKey = null;
+      }
     });
     try {
       final data = abandonar
@@ -218,9 +285,9 @@ class _PedidoSistemaState extends State<PedidoSistema> {
           () => _pedido = Map<String, dynamic>.from(data['pedido'] as Map),
         );
       }
-      widget.onRefresh();
+      if (abandonar || anterior != _pedido['estado']) widget.onRefresh();
     } catch (e) {
-      if (mounted) {
+      if (mounted && !silencioso) {
         setState(
           () => _error =
               'No se pudo verificar el pago. Los asientos no se liberan hasta confirmación del servidor. $e',
@@ -232,21 +299,31 @@ class _PedidoSistemaState extends State<PedidoSistema> {
   }
 
   Future<void> _abrir() async {
-    final uri = Uri.tryParse(_pedido['checkout_url']?.toString() ?? '');
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
     try {
-      if (uri == null || !esCheckoutSeguro(uri)) {
+      final data = await widget.api.post(
+        '/pedidos/${_pedido['id']}/pago-embebido',
+      );
+      if (!mounted) return;
+      final secret = data['client_secret'];
+      final key = data['publishable_key'];
+      if (secret is! String || key is! String || !key.startsWith('pk_test_')) {
         throw const FormatException(
-          'Enlace de pago no válido. Actualiza el pedido.',
+          'El formulario seguro no está disponible para este pedido.',
         );
       }
-      final opened = await widget.launcher(uri);
-      if (!opened) {
-        throw const FormatException(
-          'El navegador bloqueó el pago. Permite la nueva pestaña y reintenta.',
-        );
-      }
+      setState(() {
+        _clientSecret = secret;
+        _publishableKey = key;
+      });
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -350,27 +427,26 @@ class _PedidoSistemaState extends State<PedidoSistema> {
             ),
           ),
           const SizedBox(height: 16),
-          AccionesDialogo(
-            children: [
-              if (pendiente && _pedido['checkout_url'] != null)
-                FilledButton.icon(
-                  onPressed: _busy ? null : _abrir,
-                  icon: const Icon(Icons.lock_outline, size: 18),
-                  label: const Text(
-                    'Pagar con Stripe TEST',
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              OutlinedButton.icon(
-                onPressed: _busy ? null : () => _actualizar(),
-                icon: const Icon(Icons.refresh, size: 18),
-                label: const Text(
-                  'Actualizar pago',
-                  textAlign: TextAlign.center,
-                ),
+          if (pendiente && _clientSecret == null)
+            FilledButton.icon(
+              onPressed: _busy ? null : _abrir,
+              icon: const Icon(Icons.lock_outline, size: 18),
+              label: const Text(
+                'Pagar con Stripe TEST',
+                textAlign: TextAlign.center,
               ),
-            ],
-          ),
+            ),
+          if (pendiente && _clientSecret != null)
+            widget.stripeBuilder?.call(
+                  _clientSecret!,
+                  _publishableKey!,
+                  () => _actualizar(),
+                ) ??
+                StripeEmbebido(
+                  clientSecret: _clientSecret!,
+                  publishableKey: _publishableKey!,
+                  onComplete: () => _actualizar(),
+                ),
           if (pendiente) ...[
             const SizedBox(height: 18),
             const Text(
@@ -394,7 +470,7 @@ class _PedidoSistemaState extends State<PedidoSistema> {
               ),
             ),
             const PanelMensaje(
-              'Pagar o volver de Stripe no confirma la reserva. Actualiza el pago para verificarlo.',
+              'El pago se verifica automáticamente con el servidor. Los asientos están retenidos temporalmente, no reservados hasta confirmar el pago. Puedes cerrar y continuar desde Pendientes de pago.',
             ),
           ],
           if (_pedido['mensaje'] != null)
@@ -405,14 +481,16 @@ class _PedidoSistemaState extends State<PedidoSistema> {
           if (pendiente) ...[
             const SizedBox(height: 14),
             const Divider(),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(
-                style: TextButton.styleFrom(
-                  foregroundColor: Theme.of(context).colorScheme.error,
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                icon: const Icon(Icons.delete_outline),
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.error,
+                  foregroundColor: Colors.white,
                 ),
                 onPressed: _busy ? null : () => _actualizar(abandonar: true),
-                child: const Text('Abandonar pedido'),
+                label: const Text('Abandonar pedido'),
               ),
             ),
           ],

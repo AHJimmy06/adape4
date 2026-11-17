@@ -28,6 +28,13 @@ class StripeTest:
     def plain(value):
         return value.to_dict() if hasattr(value, 'to_dict') else dict(value)
 
+    @staticmethod
+    def publishable_key():
+        key = os.getenv('STRIPE_PUBLISHABLE_KEY', '')
+        if not key.startswith('pk_test_'):
+            raise ErrorAPI('pagos_no_configurados', 'Falta configurar la clave pública de Stripe TEST para el formulario de pago.', 503)
+        return key
+
     def call(self, method, *args, **kwargs):
         self.ready()
         try:
@@ -45,6 +52,12 @@ class StripeTest:
                       expires_at=int(datetime.fromisoformat(order['creado_en'].replace('Z', '+00:00')).timestamp() + 24 * 3600),
                       line_items=[dict(quantity=1, price_data=dict(currency='usd', unit_amount=order['total_centavos'],
                           product_data={'name': 'AeroTech — ' + ', '.join(s['codigo'] for s in order['asientos'])}))])
+        # The persisted request marker keeps recovery of pre-upgrade orders
+        # byte-for-byte compatible with their original provider idempotency key.
+        if (order.get('solicitud') or {}).get('checkout_ui') == 'embedded':
+            params.pop('success_url')
+            params.pop('cancel_url')
+            params.update(ui_mode='embedded', redirect_on_completion='never')
         # Provider maximum lifetime permits deterministic crash recovery. The
         # 35-minute business hold expires by verified Stripe.expire, never clock-only.
         return self.call(self.client.v1.checkout.sessions.create, params,

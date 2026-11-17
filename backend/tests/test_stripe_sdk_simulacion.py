@@ -23,6 +23,7 @@ def sdk_provider(monkeypatch):
     monkeypatch.setenv('STRIPE_SECRET_KEY','sk_test_local_simulation_only')
     monkeypatch.setenv('STRIPE_WEBHOOK_SECRET','whsec_local_simulation_only')
     monkeypatch.setenv('PUBLIC_API_URL','https://example.invalid')
+    monkeypatch.setenv('STRIPE_PUBLISHABLE_KEY','pk_test_local_simulation_only')
     state = dict(sessions={}, refunds={}, keys={}, disconnect_checkout=False, disconnect_refund=False, requests=[], versions=[], bodies=[])
     class Handler(BaseHTTPRequestHandler):
         def log_message(self,*args):
@@ -49,6 +50,8 @@ def sdk_provider(monkeypatch):
                    amount_total=int(get('line_items[0][price_data][unit_amount]')),status='open',payment_status='unpaid',
                    payment_intent=None,client_reference_id=get('client_reference_id'),expires_at=int(get('expires_at')),
                    metadata={k:get('metadata['+k+']') for k in ('app','pedido_id','usuario_id')},url='https://checkout.stripe.com/c/pay/'+ident)
+                if body.get('ui_mode') == ['embedded']:
+                    result.update(ui_mode='embedded', client_secret=ident+'_secret_simulated', url=None)
                 state['sessions'][ident]=result
                 flag='disconnect_checkout'
             elif self.path == '/v1/refunds':
@@ -166,6 +169,21 @@ def test_production_client_pins_webhook_compatible_api_and_card_only(sdk_provide
     assert state['bodies'][0] == state['bodies'][1]
     assert state['requests'][0][1] == state['requests'][1][1] == 'aerotech-checkout-' + order['id']
     assert first['id'] == repeated['id'] and len(state['sessions']) == 1
+
+
+def test_sdk_embedded_checkout_has_no_redirect_and_preserves_idempotency(sdk_provider):
+    provider, state = sdk_provider
+    order = dict(id=str(uuid4()), usuario_id=str(uuid4()), total_centavos=13800,
+                 creado_en=datetime.now(timezone.utc).isoformat(), asientos=[{'codigo': '1A'}],
+                 solicitud={'checkout_ui': 'embedded'})
+    first = provider.checkout(order)
+    again = provider.checkout(order)
+    assert first['id'] == again['id'] and len(state['sessions']) == 1
+    assert first['client_secret'].startswith(first['id'] + '_secret_')
+    for body in state['bodies']:
+        assert body['ui_mode'] == ['embedded']
+        assert body['redirect_on_completion'] == ['never']
+        assert not {'success_url', 'cancel_url', 'return_url'} & body.keys()
 
 
 def test_sdk_actual_refund_shape_without_livemode_and_partial_replay(core, sdk_provider):

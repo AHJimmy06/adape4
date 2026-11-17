@@ -64,12 +64,14 @@ class DialogoAerotech extends StatelessWidget {
     required this.actions,
     this.eyebrow = 'AEROTECH',
     this.maxWidth = 680,
+    this.onClose,
   });
   final String title, subtitle, eyebrow;
   final IconData icon;
   final Widget child;
   final List<Widget> actions;
   final double maxWidth;
+  final VoidCallback? onClose;
 
   @override
   Widget build(BuildContext context) => Dialog(
@@ -90,11 +92,24 @@ class DialogoAerotech extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  EncabezadoDialogo(
-                    title: title,
-                    subtitle: subtitle,
-                    eyebrow: eyebrow,
-                    icon: icon,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: EncabezadoDialogo(
+                          title: title,
+                          subtitle: subtitle,
+                          eyebrow: eyebrow,
+                          icon: icon,
+                        ),
+                      ),
+                      if (onClose != null)
+                        IconButton(
+                          onPressed: onClose,
+                          tooltip: 'Cerrar',
+                          icon: const Icon(Icons.close),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: 24),
                   child,
@@ -102,14 +117,15 @@ class DialogoAerotech extends StatelessWidget {
               ),
             ),
           ),
-          Container(
-            decoration: const BoxDecoration(
-              color: AerotechTheme.inputFill,
-              border: Border(top: BorderSide(color: AerotechTheme.border)),
+          if (actions.isNotEmpty)
+            Container(
+              decoration: const BoxDecoration(
+                color: AerotechTheme.inputFill,
+                border: Border(top: BorderSide(color: AerotechTheme.border)),
+              ),
+              padding: const EdgeInsets.all(16),
+              child: AccionesDialogo(children: actions),
             ),
-            padding: const EdgeInsets.all(16),
-            child: AccionesDialogo(children: actions),
-          ),
         ],
       ),
     ),

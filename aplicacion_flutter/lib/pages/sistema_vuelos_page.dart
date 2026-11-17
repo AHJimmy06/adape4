@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../models/ruta_vuelo.dart';
+import '../widgets/tarjeta_destino.dart';
 import '../services/api_service.dart';
 import '../services/sistema_api.dart';
 import '../utils/checkout_launcher.dart';
-import '../utils/checkout_operacion.dart';
 import '../widgets/sistema_compra/compra_sistema_dialog.dart';
 import '../widgets/sistema_compra/ruta_aeropuertos.dart';
 import 'sistema_reservas_page.dart';
@@ -129,8 +129,6 @@ class _SistemaVuelosPageState extends State<SistemaVuelosPage> {
           onChanged: _busy ? null : changed,
         ),
       );
-  String _airport(dynamic a) =>
-      a is Map ? '${a['iata']} · ${a['nombre']} (${a['ciudad']})' : '';
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
@@ -248,9 +246,7 @@ class _SistemaVuelosPageState extends State<SistemaVuelosPage> {
             ].contains(p['estado']),
           ))
             ExpansionTile(
-              title: const Text(
-                'Pedidos pendientes · continuar o actualizar pago',
-              ),
+              title: const Text('Pedidos pendientes · continuar con el pago'),
               children: [
                 for (final p in _pedidos.where(
                   (p) => [
@@ -273,61 +269,34 @@ class _SistemaVuelosPageState extends State<SistemaVuelosPage> {
               padding: EdgeInsets.all(24),
               child: Text('No hay vuelos para estos filtros.'),
             ),
-          for (final v in _vuelos) _tarjeta(v),
+          const SizedBox(height: 20),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final columnas = constraints.maxWidth >= 1100
+                  ? 3
+                  : constraints.maxWidth >= 700
+                  ? 2
+                  : 1;
+              final ancho =
+                  (constraints.maxWidth - (columnas - 1) * 20) / columnas;
+              return Wrap(
+                spacing: 20,
+                runSpacing: 20,
+                children: [
+                  for (final v in _vuelos)
+                    SizedBox(
+                      width: ancho,
+                      child: TarjetaDestino(
+                        vuelo: v,
+                        onReservar: _busy ? null : () => _reservar(v),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
         ],
       ),
     ),
   );
-  Widget _tarjeta(Map<String, dynamic> v) {
-    final r = v['ruta'] as Map? ?? {};
-    final a = r['origen'] as Map? ?? {};
-    final b = r['destino'] as Map? ?? {};
-    final avion = v['avion'] as Map? ?? {};
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 10),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '${v['codigo']} · ${a['iata']} → ${b['iata']}',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            Text('${_airport(a)} → ${_airport(b)}'),
-            const SizedBox(height: 8),
-            Text('Salida: ${v['salida_local']} · ${a['zona_horaria']}'),
-            Text('Llegada: ${v['llegada_local']} · ${b['zona_horaria']}'),
-            Text('${avion['modelo']} · ${avion['matricula']}'),
-            const SizedBox(height: 8),
-            Text(
-              'Desde ${dinero(v['precio_desde_centavos'])} + IVA · ${v['asientos_disponibles']} disponibles',
-            ),
-            Wrap(
-              spacing: 12,
-              children: [
-                for (final t in mapas(v['tarifas']))
-                  Chip(
-                    label: Text(
-                      '${t['clase_codigo']}: ${dinero(t['precio_centavos'])} · ${t['disponibles']} libres',
-                    ),
-                  ),
-              ],
-            ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton.icon(
-                onPressed:
-                    _busy || (v['asientos_disponibles'] as num? ?? 0) <= 0
-                    ? null
-                    : () => _reservar(v),
-                icon: const Icon(Icons.airline_seat_recline_normal),
-                label: const Text('Reservar'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }

@@ -507,7 +507,22 @@ void main() {
       find.text('Primero crea una ruta activa y un avión con cabina.'),
       findsOneWidget,
     );
-    expect(find.byType(DropdownMenuItem<String>), findsNothing);
+    for (final key in ['ruta-', 'avion-']) {
+      final selector = t.widget<DropdownButton<String>>(
+        find.descendant(
+          of: find.byKey(ValueKey(key)),
+          matching: find.byType(DropdownButton<String>),
+        ),
+      );
+      expect(selector.items, isEmpty);
+    }
+    final frecuencia = t.widget<DropdownButton<String>>(
+      find.descendant(
+        of: find.byKey(const ValueKey('frecuencia_vuelo')),
+        matching: find.byType(DropdownButton<String>),
+      ),
+    );
+    expect(frecuencia.items!.map((item) => item.value), ['unico', 'diaria']);
   });
   testWidgets('Cruce de zonas permite llegada civil anterior y delega UTC', (
     t,

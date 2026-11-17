@@ -21,7 +21,23 @@ class CabinaSistema extends StatelessWidget {
     final porCodigo = {for (final s in asientos) s['codigo'].toString(): s};
     return Column(
       children: [
-        const Text('Doble clic o Enter para elegir · Gris: no disponible'),
+        const Text('Doble clic o Enter para elegir'),
+        const SizedBox(height: 8),
+        const Wrap(
+          spacing: 12,
+          runSpacing: 4,
+          children: [
+            Text('● Disponible', style: TextStyle(color: Color(0xff087db1))),
+            Text(
+              '● Retenido temporalmente',
+              style: TextStyle(color: Color(0xffb77900)),
+            ),
+            Text(
+              '● Reservado y pagado',
+              style: TextStyle(color: Colors.blueGrey),
+            ),
+          ],
+        ),
         const SizedBox(height: 12),
         for (final clase in clases) ...[
           Text(
@@ -111,6 +127,8 @@ class CabinaSistema extends StatelessWidget {
                       ? Colors.teal
                       : libre
                       ? const Color(0xffe0f4fa)
+                      : s?['estado'] == 'retenido'
+                      ? const Color(0xffffe6aa)
                       : Colors.blueGrey.shade200,
                   borderRadius: BorderRadius.circular(9),
                   border: Border.all(

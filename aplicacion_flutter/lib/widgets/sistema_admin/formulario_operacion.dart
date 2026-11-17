@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -5,6 +7,7 @@ import 'validacion_operaciones.dart';
 import '../../services/api_service.dart';
 import '../presentacion/dialogo_aerotech.dart';
 import '../../theme/aerotech_theme.dart';
+import '../../utils/checkout_operacion.dart';
 
 typedef Registro = Map<String, dynamic>;
 
@@ -31,6 +34,9 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
   final Map<String, TextEditingController> _precios = {};
   String? _origen, _destino, _ruta, _avion, _error;
   DateTime? _salida, _llegada;
+  DateTime? _fechaFin;
+  String _frecuencia = 'unico';
+  String? _programacionSolicitud, _programacionClave;
   bool _guardando = false;
   TextEditingController campo(String clave, [String inicial = '']) =>
       _campos.putIfAbsent(
@@ -361,6 +367,18 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
       );
       if (salida) {
         _salida = valor;
+        if (_fechaFin != null &&
+            (_fechaFin!.isBefore(
+                  DateTime(valor.year, valor.month, valor.day),
+                ) ||
+                _fechaFin!
+                        .difference(
+                          DateTime(valor.year, valor.month, valor.day),
+                        )
+                        .inDays >=
+                    90)) {
+          _fechaFin = null;
+        }
         if (_llegada != null && fecha(_llegada!).compareTo(fecha(valor)) < 0) {
           _llegada = null;
         }
@@ -370,8 +388,44 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
     });
   }
 
+  Future<void> elegirFin() async {
+    if (_salida == null) return;
+    final inicio = DateTime(_salida!.year, _salida!.month, _salida!.day);
+    final fin = await showDatePicker(
+      context: context,
+      initialDate: _fechaFin ?? inicio,
+      firstDate: inicio,
+      lastDate: DateTime(inicio.year, inicio.month, inicio.day + 89),
+      helpText: 'Última salida de la programación diaria',
+      cancelText: 'Cancelar',
+      confirmText: 'Elegir',
+    );
+    if (fin != null && mounted) setState(() => _fechaFin = fin);
+  }
+
   List<Widget> vuelo() => [
     texto('codigo', 'Código del vuelo', mayusculas: true),
+    if (widget.registro == null) ...[
+      DropdownButtonFormField<String>(
+        key: const ValueKey('frecuencia_vuelo'),
+        initialValue: _frecuencia,
+        decoration: const InputDecoration(labelText: 'Frecuencia del vuelo'),
+        items: const [
+          DropdownMenuItem(
+            value: 'unico',
+            child: Text('Único · una sola fecha'),
+          ),
+          DropdownMenuItem(
+            value: 'diaria',
+            child: Text('Diario · repetir entre fechas'),
+          ),
+        ],
+        onChanged: _guardando
+            ? null
+            : (value) => setState(() => _frecuencia = value ?? 'unico'),
+      ),
+      const SizedBox(height: 14),
+    ],
     selector(
       'ruta',
       'Ruta',
@@ -406,6 +460,27 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
           ),
         ),
       ),
+    if (widget.registro == null && _frecuencia == 'diaria') ...[
+      OutlinedButton.icon(
+        key: const ValueKey('fecha_fin_programacion'),
+        onPressed: _guardando || _salida == null ? null : elegirFin,
+        icon: const Icon(Icons.date_range),
+        label: Text(
+          _salida == null
+              ? 'Selecciona primero la salida'
+              : _fechaFin == null
+              ? 'Elegir última fecha de salida'
+              : 'Hasta ${fecha(_fechaFin!)}',
+        ),
+      ),
+      const SizedBox(height: 8),
+      Text(
+        _fechaFin == null || _salida == null
+            ? 'Se creará un vuelo por día, hasta 90 días. Cada fecha tendrá su propia disponibilidad.'
+            : '${_fechaFin!.difference(DateTime(_salida!.year, _salida!.month, _salida!.day)).inDays + 1} vuelos diarios · misma ruta, avión y horarios locales.',
+      ),
+      const SizedBox(height: 14),
+    ],
     if (avion != null)
       const _SeccionFormulario('Cabina y tarifas', Icons.payments_outlined),
     if (avion != null)
@@ -517,6 +592,29 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
               },
           ],
         };
+        if (widget.registro == null && _frecuencia == 'diaria') {
+          if (_fechaFin == null) {
+            setState(
+              () => _error = 'Elige la última fecha de la programación diaria.',
+            );
+            return;
+          }
+          if (campo('codigo').text.trim().length > 21) {
+            setState(
+              () =>
+                  _error = 'El código base diario admite hasta 21 caracteres.',
+            );
+            return;
+          }
+          datos['frecuencia'] = 'diaria';
+          datos['fecha_fin'] = fecha(_fechaFin!);
+          final solicitud = jsonEncode(datos);
+          if (_programacionSolicitud != solicitud) {
+            _programacionSolicitud = solicitud;
+            _programacionClave = nuevaClaveOperacion();
+          }
+          datos['clave_operacion'] = _programacionClave;
+        }
     }
     if (widget.registro != null) datos['version'] = widget.registro!['version'];
     setState(() {

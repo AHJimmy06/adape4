@@ -133,7 +133,12 @@ class _SistemaAdminPageState extends State<SistemaAdminPage> {
           setState(() => _mutando = true);
           try {
             if (original == null) {
-              await _api.post('/$recurso', body: datos);
+              await _api.post(
+                recurso == 'vuelos' && datos['frecuencia'] == 'diaria'
+                    ? '/programaciones'
+                    : '/$recurso',
+                body: datos,
+              );
             } else {
               await _api.put(
                 '/$recurso/${Uri.encodeComponent(original['id'].toString())}',
