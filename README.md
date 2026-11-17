@@ -114,3 +114,16 @@ Las pruebas de Flask usan un repositorio falso y no requieren claves Supabase. L
 - Supabase aplica RLS y solo concede acceso a tablas/funciones a `service_role`; el backend es quien valida la autorización de usuario.
 - Las funciones SQL bloquean la actualización de inventario dentro de una transacción para impedir sobreventa y restauran asientos al cancelar.
 - El Blueprint permite crear el servicio Render desde el repositorio del proyecto; las credenciales se ingresan en Render y nunca se almacenan en el cliente móvil.
+
+
+## Acceso desde Flutter Web (CORS)
+
+La API permite peticiones desde `http://localhost:<puerto>` y
+`http://127.0.0.1:<puerto>` para el cliente Flutter local. También permite orígenes
+exactos configurados en `CORS_ALLOWED_ORIGINS`, separados por comas y sin barra
+final (por ejemplo, `https://aerotech.example`). No se habilita un origen universal
+ni el envío de cookies. Las reservas siguen requiriendo un JWT Bearer válido.
+
+El navegador envía `OPTIONS` antes del login JSON; la API responde con las
+cabeceras CORS tanto en la negociación como en las respuestas normales y errores.
+Cambiar la URL en Flutter no reemplaza esta configuración del servidor.

@@ -1,5 +1,6 @@
 """API REST de reservas de vuelos."""
 import os
+import re
 import xml.etree.ElementTree as ET
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
@@ -14,6 +15,24 @@ from backend.services import (ServicioAutenticacion, validar_filtros_vuelos,
 def create_app(repository=None, jwt_secret=None):
     load_dotenv(Path(__file__).with_name('.env'))
     app = Flask(__name__)
+    origenes_cors = {origen.strip() for origen in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if origen.strip()}
+
+    @app.after_request
+    def permitir_cliente_web(respuesta):
+        # Flutter Web usa puertos locales variables; no se autoriza cualquier sitio.
+        if not request.path.startswith("/api/"):
+            return respuesta
+        respuesta.vary.add("Origin")
+        origen = request.headers.get("Origin", "")
+        es_local = re.fullmatch(r"http://(?:localhost|127\.0\.0\.1)(?::[0-9]{1,5})?", origen) is not None
+        if origen and (es_local or origen in origenes_cors):
+            respuesta.headers["Access-Control-Allow-Origin"] = origen
+            if request.method == "OPTIONS":
+                respuesta.headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
+                respuesta.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+                respuesta.headers["Access-Control-Max-Age"] = "600"
+        return respuesta
+
     secreto = jwt_secret or os.getenv("JWT_SECRET")
     if repository is None:
         url, clave = os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY")

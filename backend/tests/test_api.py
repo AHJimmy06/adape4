@@ -269,3 +269,50 @@ def test_calculo_iva_redondea_importes_a_dos_decimales(api):
     assert response.get_json()["iva"] == 0.02
     assert response.get_json()["total"] == 0.12
 
+
+
+@pytest.mark.parametrize("origen", ["http://localhost:65517", "http://127.0.0.1:8080"])
+def test_preflight_permite_flutter_local_sin_autenticacion(api, origen):
+    client, _ = api
+    respuesta = client.options("/api/auth/login", headers={
+        "Origin": origen, "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type,authorization",
+    })
+    assert respuesta.status_code == 200
+    assert respuesta.headers.get("Access-Control-Allow-Origin") == origen
+    assert "POST" in respuesta.headers["Access-Control-Allow-Methods"]
+    assert "Authorization" in respuesta.headers["Access-Control-Allow-Headers"]
+    assert "Content-Type" in respuesta.headers["Access-Control-Allow-Headers"]
+    assert "Origin" in respuesta.vary
+    assert "Access-Control-Allow-Credentials" not in respuesta.headers
+
+
+@pytest.mark.parametrize("origen", ["https://desconocido.example", "http://localhost.evil.example:8080", "null"])
+def test_cors_no_autoriza_origen_desconocido(api, origen):
+    client, _ = api
+    respuesta = client.options("/api/auth/login", headers={"Origin": origen, "Access-Control-Request-Method":"POST"})
+    assert "Access-Control-Allow-Origin" not in respuesta.headers
+
+
+def test_login_y_errores_conservan_cors_y_jwt(api):
+    client, _ = api
+    registrar(client)
+    origen = {"Origin":"http://localhost:65517"}
+    respuesta = client.post("/api/auth/login", headers=origen, json={"correo":"ana@example.com", "contrasena":"ClaveSegura123"})
+    assert respuesta.status_code == 200
+    assert respuesta.get_json()["token"]
+    assert respuesta.headers["Access-Control-Allow-Origin"] == origen["Origin"]
+    denegada = client.get("/api/reservas", headers=origen)
+    assert denegada.status_code == 401
+    assert denegada.headers["Access-Control-Allow-Origin"] == origen["Origin"]
+    token = respuesta.get_json()["token"]
+    protegida = client.get("/api/reservas", headers={**origen, "Authorization":f"Bearer {token}"})
+    assert protegida.status_code == 200
+    assert protegida.get_json() == []
+
+
+def test_cors_origen_produccion_explicito(monkeypatch):
+    monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "https://aerotech.example")
+    app = create_app(repository=FakeRepository(), jwt_secret="secreto-de-prueba-largo-para-pruebas")
+    respuesta = app.test_client().get("/api/vuelos", headers={"Origin":"https://aerotech.example"})
+    assert respuesta.headers["Access-Control-Allow-Origin"] == "https://aerotech.example"
