@@ -98,7 +98,11 @@ El sistema bloquea cambios que invalidarían asientos retenidos, reservas activa
 
 ### 6.4. Roles de usuarios
 
-La promoción de un usuario a ADMIN corresponde a la operación administrativa existente y autorizada. Nunca se obtiene ADMIN mediante autorregistro ni modificando el JWT. La API existente lista usuarios mediante `GET /api/admin/usuarios` y promueve mediante `POST /api/admin/usuarios/{id}/promover`, ambas con autorización ADMIN. **PENDIENTE de contraste de interfaz:** ubicación y etiqueta exacta del control de gestión de roles del cliente integrado.
+En **Operaciones → Usuarios**, seleccione **Crear usuario** para completar nombre, correo, contraseña y rol. El rol predeterminado es USER; elegir ADMIN requiere confirmar sus privilegios. Crear la cuenta no cambia su propia sesión.
+
+Use **Promover a ADMIN** o **Retirar ADMIN** en la cuenta de otra persona y escriba su correo exacto para confirmar. Retirar ADMIN mantiene la cuenta y sus reservas, pero revoca el acceso administrativo en las siguientes solicitudes. Su propia cuenta ADMIN está protegida y debe permanecer al menos un administrador. Si aparece un error, corrija el formulario o actualice la lista; no asuma que el cambio se guardó.
+
+Nunca se obtiene ADMIN mediante autorregistro ni modificando el JWT. La API conserva `GET /api/admin/usuarios` y `POST /api/admin/usuarios/{id}/promover`, y añade creación con `POST /api/admin/usuarios` y cambio de rol con `PUT /api/admin/usuarios/{id}/rol`. Todas exigen ADMIN vigente; el responsable del despliegue debe aplicar la migración 009 antes de habilitar las nuevas operaciones.
 
 ## 7. Mensajes y recuperación
 

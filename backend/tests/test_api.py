@@ -60,6 +60,26 @@ class FakeRepository:
             user["rol"] = "ADMIN"
         return user
 
+    def administrar_usuario(self, actor_id, accion, datos):
+        with self._lock:
+            actor = self.buscar_usuario_por_id(actor_id)
+            if not actor or actor['rol'] != 'ADMIN':
+                raise ErrorAPI('acceso_denegado', 'Se requiere ADMIN vigente.', 403)
+            if accion == 'crear':
+                if datos['correo'] in self.users:
+                    raise ErrorAPI('correo_registrado', 'Ya existe una cuenta con ese correo.', 409)
+                from uuid import uuid4
+                user = {'id': str(uuid4()), **datos}
+                self.users[user['correo']] = user
+                return user
+            user = self.buscar_usuario_por_id(datos['id'])
+            if not user:
+                raise ErrorAPI('usuario_no_encontrado', 'No se encontró el usuario.', 404)
+            if user['id'] == actor_id and datos['rol'] == 'USER':
+                raise ErrorAPI('auto_retiro', 'No puedes retirar tu propio acceso ADMIN.', 400)
+            user['rol'] = datos['rol']
+            return user
+
     def crear_vuelo(self, datos):
         flight = {"id": f"vuelo-{len(self.flights) + 1}", **datos, "version": 1, "activo": True}
         self.flights.append(flight)

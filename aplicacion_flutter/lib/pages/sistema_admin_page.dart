@@ -5,6 +5,7 @@ import '../services/api_service.dart';
 import '../services/sistema_api.dart';
 import '../theme/aerotech_theme.dart';
 import '../widgets/sistema_admin/formulario_operacion.dart';
+import '../widgets/sistema_admin/usuarios/formulario_usuario.dart';
 
 class SistemaAdminPage extends StatefulWidget {
   const SistemaAdminPage({super.key, required this.apiService});
@@ -214,29 +215,54 @@ class _SistemaAdminPageState extends State<SistemaAdminPage> {
     }
   }
 
-  Future<void> _promover(Usuario usuario) async {
-    if (!await _confirmar(
-      'Otorgar acceso ADMIN',
-      '${usuario.nombre} podrá administrar catálogos, vuelos y usuarios. ¿Confirmas el cambio?',
-    )) {
-      return;
-    }
-    if (!mounted) return;
+  Future<void> _mutarUsuario(Future<void> Function() operacion) async {
     setState(() => _mutando = true);
     try {
-      await widget.apiService.promoverUsuario(usuario.id);
-      await _cargar();
+      await operacion();
     } on ExcepcionApi catch (e) {
-      if (e.codigo == 409) {
-        await _conflicto(e);
-      } else {
-        _mostrarError(e);
-      }
-    } catch (e) {
-      if (mounted) _mostrarError(e);
+      if (mounted && (e.codigo == 401 || e.codigo == 403)) _mostrarError(e);
+      rethrow;
     } finally {
       if (mounted) setState(() => _mutando = false);
     }
+  }
+
+  Future<void> _crearUsuario() async {
+    if (_cargando || _mutando || _denegado || _error != null) return;
+    final creado = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => FormularioUsuario(
+        guardar: (datos) => _mutarUsuario(() async {
+          await widget.apiService.crearUsuarioAdministrado(
+            nombre: datos['nombre'],
+            correo: datos['correo'],
+            contrasena: datos['contrasena'],
+            rol: datos['rol'],
+          );
+        }),
+      ),
+    );
+    if (creado == true && mounted) await _cargar();
+  }
+
+  Future<void> _cambiarRol(Usuario usuario) async {
+    if (_cargando || _mutando || _denegado || _error != null) return;
+    if (usuario.id == widget.apiService.usuarioActual?.id) return;
+    final cambiado = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => ConfirmarRolUsuario(
+        usuario: usuario,
+        guardar: () => _mutarUsuario(() async {
+          await widget.apiService.cambiarRolUsuario(
+            usuario.id,
+            usuario.esAdministrador ? 'USER' : 'ADMIN',
+          );
+        }),
+      ),
+    );
+    if (cambiado == true && mounted) await _cargar();
   }
 
   String titulo(String recurso, Registro e) => switch (recurso) {
@@ -258,12 +284,35 @@ class _SistemaAdminPageState extends State<SistemaAdminPage> {
   };
   Widget _lista() {
     if (_indice == 4) {
+      final admins = _usuarios.where((u) => u.esAdministrador).length;
       return ListView(
         padding: const EdgeInsets.all(20),
         children: [
           const Text(
             'Administración de usuarios',
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${_usuarios.length} cuentas · $admins administradores',
+            style: const TextStyle(color: AerotechTheme.textSecondary),
+          ),
+          const SizedBox(height: 16),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.icon(
+              key: const ValueKey('crear_usuario'),
+              onPressed: _cargando || _mutando || _error != null
+                  ? null
+                  : _crearUsuario,
+              icon: const Icon(Icons.person_add_alt_1),
+              label: const Text('Crear usuario'),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Los cambios de rol se aplican de inmediato. Tu propia cuenta ADMIN está protegida.',
+            style: TextStyle(color: AerotechTheme.textSecondary),
           ),
           const SizedBox(height: 12),
           if (_usuarios.isEmpty) const Text('No hay usuarios disponibles.'),
@@ -274,6 +323,18 @@ class _SistemaAdminPageState extends State<SistemaAdminPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    CircleAvatar(
+                      backgroundColor: AerotechTheme.blue.withValues(
+                        alpha: 0.1,
+                      ),
+                      child: Icon(
+                        u.esAdministrador
+                            ? Icons.admin_panel_settings_outlined
+                            : Icons.person_outline,
+                        color: AerotechTheme.blue,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     Text(
                       u.nombre,
                       style: const TextStyle(fontWeight: FontWeight.bold),
@@ -285,13 +346,28 @@ class _SistemaAdminPageState extends State<SistemaAdminPage> {
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         Chip(label: Text(u.rol)),
-                        if (!u.esAdministrador)
-                          OutlinedButton(
-                            onPressed: _mutando || _cargando
-                                ? null
-                                : () => _promover(u),
-                            child: const Text('Promover a ADMIN'),
+                        if (u.id == widget.apiService.usuarioActual?.id)
+                          const Chip(label: Text('Tu cuenta')),
+                        OutlinedButton.icon(
+                          key: ValueKey('rol_${u.id}'),
+                          onPressed:
+                              _mutando ||
+                                  _cargando ||
+                                  _error != null ||
+                                  u.id == widget.apiService.usuarioActual?.id
+                              ? null
+                              : () => _cambiarRol(u),
+                          icon: Icon(
+                            u.esAdministrador
+                                ? Icons.remove_moderator_outlined
+                                : Icons.add_moderator_outlined,
                           ),
+                          label: Text(
+                            u.esAdministrador
+                                ? 'Retirar ADMIN'
+                                : 'Promover a ADMIN',
+                          ),
+                        ),
                       ],
                     ),
                   ],

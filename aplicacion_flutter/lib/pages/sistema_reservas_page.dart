@@ -4,6 +4,8 @@ import '../services/api_service.dart';
 import '../services/sistema_api.dart';
 import '../utils/checkout_operacion.dart';
 import '../utils/formateador_xml.dart';
+import '../widgets/presentacion/dialogo_aerotech.dart';
+import '../theme/aerotech_theme.dart';
 import '../widgets/sistema_compra/compra_sistema_dialog.dart';
 
 class SistemaReservasPage extends StatefulWidget {
@@ -48,23 +50,35 @@ class _SistemaReservasPageState extends State<SistemaReservasPage> {
       setState(() => _busy = false);
       await showDialog<void>(
         context: context,
-        builder: (c) => AlertDialog(
-          title: const Text('Comprobante académico · no fiscal'),
-          content: SizedBox(
-            width: 720,
-            child: SingleChildScrollView(
-              child: SelectableText(
-                formatearXml(xml),
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-              ),
-            ),
-          ),
+        builder: (c) => DialogoAerotech(
+          maxWidth: 800,
+          title: 'Comprobante académico · no fiscal',
+          subtitle: 'Consulta el documento XML de tu reserva. No constituye una factura electrónica.',
+          eyebrow: 'DOCUMENTOS DE TU VIAJE',
+          icon: Icons.description_outlined,
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(c),
               child: const Text('Cerrar'),
             ),
           ],
+          child: Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: AerotechTheme.inputFill,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AerotechTheme.border),
+            ),
+            child: SelectableText(
+              formatearXml(xml),
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 12,
+                height: 1.65,
+                color: AerotechTheme.navy,
+              ),
+            ),
+          ),
         ),
       );
     } catch (e) {
@@ -121,8 +135,7 @@ class _SistemaReservasPageState extends State<SistemaReservasPage> {
         padding: const EdgeInsets.all(20),
         children: [
           if (_busy) const LinearProgressIndicator(),
-          if (_error != null)
-            Text(_error!, style: const TextStyle(color: Colors.red)),
+          if (_error != null) PanelMensaje(_error!, error: true),
           if (!_busy && _reservas.isEmpty)
             const Text('Todavía no tienes reservas confirmadas.'),
           for (final r in _reservas) _reserva(r),
@@ -145,17 +158,20 @@ class _SistemaReservasPageState extends State<SistemaReservasPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '${vuelo['codigo'] ?? 'Reserva'} · ${r['estado']}',
+              '${vuelo['codigo'] ?? 'Reserva'}',
               style: Theme.of(context).textTheme.titleLarge,
             ),
+            const SizedBox(height: 10),
+            EtiquetaEstado(r['estado']),
+            const SizedBox(height: 16),
             Text(
               '${a['iata'] ?? vuelo['origen'] ?? ''} ${a['ciudad'] ?? ''} → ${b['iata'] ?? vuelo['destino'] ?? ''} ${b['ciudad'] ?? ''}',
             ),
             Text(
-              'Salida: ${vuelo['salida_local'] ?? vuelo['salida_en'] ?? ''} · ${a['zona_horaria'] ?? ''}',
+              'Salida: ${fechaLegible(vuelo['salida_local'] ?? vuelo['salida_en'], zona: a['zona_horaria']?.toString())}',
             ),
             Text(
-              'Llegada: ${vuelo['llegada_local'] ?? vuelo['llegada_en'] ?? ''} · ${b['zona_horaria'] ?? ''}',
+              'Llegada: ${fechaLegible(vuelo['llegada_local'] ?? vuelo['llegada_en'], zona: b['zona_horaria']?.toString())}',
             ),
             if (r['legada'] == true)
               const Text(
@@ -175,7 +191,7 @@ class _SistemaReservasPageState extends State<SistemaReservasPage> {
                 for (final s in seats)
                   Chip(
                     label: Text(
-                      '${s['codigo']} · ${s['clase_codigo']} · ${s['estado']} · ${dinero(s['total_centavos'])}',
+                      '${s['codigo']} · ${s['clase_codigo']} · ${estadoLegible(s['estado'])} · ${dinero(s['total_centavos'])}',
                     ),
                   ),
               ],
@@ -188,7 +204,7 @@ class _SistemaReservasPageState extends State<SistemaReservasPage> {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Text(
-                      'Reembolso: ${c['estado']} · ${dinero(c['importe_centavos'])}',
+                      'Reembolso: ${estadoLegible(c['estado'])} · ${dinero(c['importe_centavos'])}',
                     ),
                     if ([
                       'pendiente',
@@ -284,21 +300,21 @@ class _CancelacionSistemaDialogState extends State<CancelacionSistemaDialog> {
       final c = data['cancelacion'] as Map;
       await showDialog<void>(
         context: context,
-        builder: (cxt) => AlertDialog(
-          title: Text(
-            ['completada', 'cancelado'].contains(c['estado'])
-                ? 'Reembolso confirmado'
-                : 'Solicitud de reembolso: ${c['estado']}',
-          ),
-          content: Text(
-            'Importe: ${dinero(c['importe_centavos'])}. Solo el servidor confirma la liberación de asientos.',
-          ),
+        builder: (cxt) => DialogoAerotech(
+          icon: Icons.currency_exchange,
+          subtitle: 'El servidor verifica el resultado de la solicitud.',
+          title: ['completada', 'cancelado'].contains(c['estado'])
+              ? 'Reembolso confirmado'
+              : 'Solicitud de reembolso: ${estadoLegible(c['estado'])}',
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(cxt),
               child: const Text('Aceptar'),
             ),
           ],
+          child: PanelMensaje(
+            'Importe: ${dinero(c['importe_centavos'])}. Solo el servidor confirma la liberación de asientos.',
+          ),
         ),
       );
       if (mounted) Navigator.pop(context, true);
@@ -321,69 +337,21 @@ class _CancelacionSistemaDialogState extends State<CancelacionSistemaDialog> {
     final quote = _activos
         .where((s) => _selected.contains(s['codigo']))
         .fold<int>(0, (sum, s) => sum + (s['total_centavos'] as num).toInt());
-    return AlertDialog(
-      title: const Text('Cancelación parcial'),
-      content: SizedBox(
-        width: 500,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Selecciona de 1 a ${legacy ? max : _activos.length} asiento(s) activos. Reembolso TEST del 100%, sin penalización.',
-              ),
-              if (legacy)
-                Row(
-                  children: [
-                    IconButton(
-                      onPressed: _busy || _sent || _cantidad <= 1
-                          ? null
-                          : () => setState(() => _cantidad--),
-                      icon: const Icon(Icons.remove),
-                    ),
-                    Text('$_cantidad'),
-                    IconButton(
-                      onPressed: _busy || _sent || _cantidad >= max
-                          ? null
-                          : () => setState(() => _cantidad++),
-                      icon: const Icon(Icons.add),
-                    ),
-                  ],
-                )
-              else
-                for (final s in _activos)
-                  CheckboxListTile(
-                    title: Text('${s['codigo']} · ${s['clase_codigo']}'),
-                    subtitle: Text(dinero(s['total_centavos'])),
-                    value: _selected.contains(s['codigo']),
-                    onChanged: _busy || _sent
-                        ? null
-                        : (v) => setState(() {
-                            if (v == true) {
-                              _selected.add(s['codigo'].toString());
-                            } else {
-                              _selected.remove(s['codigo']);
-                            }
-                          }),
-                  ),
-              if (!legacy) Text('Reembolso estimado: ${dinero(quote)}'),
-              const Text(
-                'El importe final se calcula en el servidor. Un reembolso pendiente no libera asientos.',
-              ),
-              if (_busy) const LinearProgressIndicator(),
-              if (_error != null)
-                Text(_error!, style: const TextStyle(color: Colors.red)),
-            ],
-          ),
-        ),
-      ),
+    return DialogoAerotech(
+      maxWidth: 580,
+      title: 'Cancelación parcial',
+      subtitle: 'Elige únicamente los asientos que deseas cancelar.',
+      eyebrow: 'ADMINISTRA TU RESERVA',
+      icon: Icons.event_seat_outlined,
       actions: [
         TextButton(
           onPressed: _busy ? null : () => Navigator.pop(context, _sent),
           child: const Text('Cerrar'),
         ),
         FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
           onPressed: _busy || (!legacy && _selected.isEmpty) || max < 1
               ? null
               : _confirmar,
@@ -392,6 +360,73 @@ class _CancelacionSistemaDialogState extends State<CancelacionSistemaDialog> {
           ),
         ),
       ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Selecciona de 1 a ${legacy ? max : _activos.length} asiento(s) activos. Reembolso TEST del 100%, sin penalización.',
+          ),
+          if (legacy)
+            Row(
+              children: [
+                IconButton(
+                  onPressed: _busy || _sent || _cantidad <= 1
+                      ? null
+                      : () => setState(() => _cantidad--),
+                  icon: const Icon(Icons.remove),
+                ),
+                Text('$_cantidad'),
+                IconButton(
+                  onPressed: _busy || _sent || _cantidad >= max
+                      ? null
+                      : () => setState(() => _cantidad++),
+                  icon: const Icon(Icons.add),
+                ),
+              ],
+            )
+          else
+            for (final s in _activos)
+              CheckboxListTile(
+                title: Text('${s['codigo']} · ${s['clase_codigo']}'),
+                subtitle: Text(dinero(s['total_centavos'])),
+                value: _selected.contains(s['codigo']),
+                onChanged: _busy || _sent
+                    ? null
+                    : (v) => setState(() {
+                        if (v == true) {
+                          _selected.add(s['codigo'].toString());
+                        } else {
+                          _selected.remove(s['codigo']);
+                        }
+                      }),
+              ),
+          if (!legacy)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(top: 16, bottom: 8),
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: AerotechTheme.inputFill,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AerotechTheme.border),
+              ),
+              child: Text(
+                'Reembolso estimado: ${dinero(quote)}',
+                style: const TextStyle(
+                  color: AerotechTheme.navy,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          const PanelMensaje(
+            'El importe final se calcula en el servidor. Un reembolso pendiente no libera asientos.',
+          ),
+          if (_busy) const LinearProgressIndicator(),
+          if (_error != null) PanelMensaje(_error!, error: true),
+        ],
+      ),
     );
   }
 }

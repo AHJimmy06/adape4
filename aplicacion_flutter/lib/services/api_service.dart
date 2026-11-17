@@ -127,6 +127,39 @@ class ApiService {
         .toList();
   }
 
+  Future<Usuario> crearUsuarioAdministrado({
+    required String nombre,
+    required String correo,
+    required String contrasena,
+    String rol = 'USER',
+  }) async {
+    final datos = await _enviarMapa(
+      'POST',
+      '/api/admin/usuarios',
+      requiereToken: true,
+      cuerpo: {
+        'nombre': nombre,
+        'correo': correo,
+        'contrasena': contrasena,
+        'rol': rol,
+      },
+    );
+    // Do not replace the authenticated operator with the account just created.
+    return _leerUsuario(datos);
+  }
+
+  Future<Usuario> cambiarRolUsuario(String id, String rol) async {
+    final datos = await _enviarMapa(
+      'PUT',
+      '/api/admin/usuarios/${Uri.encodeComponent(id)}/rol',
+      requiereToken: true,
+      cuerpo: {'rol': rol},
+    );
+    final usuario = _leerUsuario(datos);
+    if (_usuarioActual?.id == usuario.id) _usuarioActual = usuario;
+    return usuario;
+  }
+
   Future<Usuario> promoverUsuario(String id) async {
     final datos = await _enviarMapa(
       'POST',

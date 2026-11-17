@@ -116,7 +116,7 @@ void main() {
       expect(bodies[0], bodies[1]);
       expect(bodies[1]['asientos'], ['1B']);
       expect(
-        find.textContaining('Solicitud de reembolso: pendiente'),
+        find.textContaining('Solicitud de reembolso: Reembolso pendiente'),
         findsOneWidget,
       );
       await tester.tap(find.text('Aceptar'));

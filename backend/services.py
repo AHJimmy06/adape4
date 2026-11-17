@@ -11,6 +11,11 @@ from backend.models import ErrorAPI
 
 CORREO_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
+def validar_rol(rol: Any) -> str:
+    if not isinstance(rol, str) or rol not in ("USER", "ADMIN"):
+        raise ErrorAPI("rol_invalido", "Selecciona el rol USER o ADMIN.", 400)
+    return rol
+
 def validar_registro(datos: Any) -> tuple[str, str, str]:
     if not isinstance(datos, dict):
         raise ErrorAPI("datos_invalidos", "Se requiere un objeto JSON.", 400)
@@ -57,6 +62,13 @@ class ServicioAutenticacion:
     def __init__(self, repositorio: Any, secreto: str, duracion_minutos: int = 60):
         self.repositorio, self.secreto = repositorio, secreto
         self.duracion = timedelta(minutes=duracion_minutos)
+
+    def crear_usuario_administrado(self, actor_id, nombre, correo, contrasena, rol):
+        # Creation never issues a token or changes the operator's session.
+        return self.repositorio.administrar_usuario(actor_id, "crear", {
+            "nombre": nombre, "correo": correo, "rol": rol,
+            "password_hash": generate_password_hash(contrasena, method="scrypt"),
+        })
 
     def registrar(self, nombre: str, correo: str, contrasena: str) -> dict[str, Any]:
         password_hash = generate_password_hash(contrasena, method="scrypt")

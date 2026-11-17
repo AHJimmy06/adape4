@@ -14,7 +14,7 @@ No inicie Docker ni el backend local para utilizar esta API. Las cuentas existen
 
 ## Funciones
 
-- ADMIN: aeropuertos con coordenadas y zona horaria, aviones con distribución y clases, rutas, programación y tarifas de vuelos, gestión de usuarios/promoción autorizada.
+- ADMIN: aeropuertos con coordenadas y zona horaria, aviones con distribución y clases, rutas, programación y tarifas de vuelos, creación de usuarios, promoción y retiro autorizado de ADMIN.
 - USER: búsqueda, mapa nacional o globo3D internacional, selección de asientos concretos, Checkout alojado, reservas propias, cancelaciones parciales y comprobante XML académico.
 - Inventario transaccional, retenciones temporales, versiones de edición, protección de vuelos comprometidos y control de solapamiento del avión por instantes UTC.
 - Confirmación de pagos y devoluciones exclusivamente del servidor/proveedor; webhooks firmados, importes en centavos e idempotencia ante fallos después de escritura.
@@ -36,4 +36,8 @@ No colocar claves en Flutter, Git, documentación o capturas. `STRIPE_SECRET_KEY
 
 ## Verificación observada
 
-123 pruebas backend,141 Flutter, análisis sin incidencias y sondas independientes con PostgreSQL real aislado. Recorrido remoto TEST: compra20585centavos, devolución parcial6785 y restante13800; dos devoluciones exactas, historial conservado y todos los asientos nuevamente libres. El acta explica errores iniciales, correcciones y limitaciones; no se ensayaron dispositivos físicos ni dinero real.
+133 pruebas backend,153 Flutter, análisis sin incidencias y sondas independientes con PostgreSQL real aislado. Recorrido remoto TEST: compra20585centavos, devolución parcial6785 y restante13800; dos devoluciones exactas, historial conservado y todos los asientos nuevamente libres. El acta explica errores iniciales, correcciones y limitaciones; no se ensayaron dispositivos físicos ni dinero real.
+
+## Presentación y administración ampliada
+
+[Mejoras, verificaciones y capturas](docs/mejoras-interfaz/README.md). La migración009 es aditiva y ya fue aplicada al entorno APE4; no reinicie datos ni repita008. Crear cuentas desde Usuarios conserva la sesión del ADMIN. El autorregistro sigue creando USER.

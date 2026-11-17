@@ -33,3 +33,7 @@ flutter analyze --no-pub
 Guía, contrato, arquitectura y evidencias: `../docs/ape4/`. Las capturas con sufijo `local-aislado` corresponden al entorno de pruebas, no a la base remota.
 
 **Nunca use tarjetas reales:** la pasarela y los reembolsos son de prueba. El IVA del 15 % y el XML no constituyen facturación fiscal.
+
+## Usuarios administrativos
+
+En **Operaciones → Usuarios**, ADMIN puede crear cuentas (USER predeterminado o ADMIN con aceptación explícita), promover y retirar ADMIN de otra cuenta. La confirmación solicita escribir el correo del destinatario; no envía un correo ni agrega2FA. La propia cuenta está protegida y la API verifica permisos vigentes y concurrencia. Crear otra cuenta no cambia la sesión actual.

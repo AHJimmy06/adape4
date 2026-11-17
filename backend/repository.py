@@ -37,14 +37,30 @@ class RepositorioSupabase:
     def listar_usuarios(self) -> list[dict[str, Any]]:
         return self.cliente.table("usuarios").select("id,nombre,correo,rol").order("creado_en").execute().data or []
 
-    def promover_usuario(self, usuario_id: str) -> dict[str, Any] | None:
-        from uuid import UUID
+    def administrar_usuario(self, actor_id, accion, datos):
         try:
-            UUID(usuario_id)
-        except ValueError:
-            return None
-        return self._primero(self.cliente.table("usuarios").update({"rol": "ADMIN"})
-                             .eq("id", usuario_id).execute())
+            respuesta = self.cliente.rpc("administrar_usuario", {
+                "p_actor": actor_id, "p_accion": accion, "p_datos": datos,
+            }).execute()
+        except Exception as error:
+            mensaje = str(error).upper()
+            errors = [
+                ("ADMIN_REQUERIDO", "acceso_denegado", "Se requiere el rol ADMIN vigente.", 403),
+                ("USUARIO_INEXISTENTE", "usuario_no_encontrado", "No se encontró el usuario solicitado.", 404),
+                ("AUTO_RETIRO", "auto_retiro", "No puedes retirar tu propio acceso ADMIN.", 400),
+                ("ULTIMO_ADMIN", "ultimo_admin", "Debe permanecer al menos un administrador.", 409),
+                ("DATOS_USUARIO_INVALIDOS", "datos_invalidos", "Revisa los datos y el rol del usuario.", 400),
+                ("23505", "correo_registrado", "Ya existe una cuenta con ese correo.", 409),
+            ]
+            for marker, code, public_message, status in errors:
+                if marker in mensaje:
+                    raise ErrorAPI(code, public_message, status) from error
+            # Do not chain RPC failures containing password hashes into request logs.
+            raise ErrorAPI("administracion_no_disponible", "No se pudo guardar el usuario. Reintenta más tarde.", 503) from None
+        usuario = self._primero(respuesta)
+        if usuario is None:
+            raise RuntimeError("La administración de usuarios no devolvió datos.")
+        return usuario
 
     def crear_vuelo(self, datos: dict[str, Any]) -> dict[str, Any]:
         vuelo = self._primero(self.cliente.table("vuelos").insert(datos).execute())

@@ -41,6 +41,37 @@ abstract final class AerotechTheme {
           letterSpacing: -0.3,
         ),
       ),
+      dialogTheme: const DialogThemeData(
+        backgroundColor: surface,
+        surfaceTintColor: Colors.transparent,
+        shape: cardShape,
+        titleTextStyle: TextStyle(
+          color: navy,
+          fontSize: 22,
+          fontWeight: FontWeight.w800,
+        ),
+        contentTextStyle: TextStyle(
+          color: textPrimary,
+          fontSize: 14,
+          height: 1.5,
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: navy,
+          minimumSize: const Size(48, 48),
+          side: const BorderSide(color: border),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: blue,
+          minimumSize: const Size(48, 48),
+        ),
+      ),
       cardTheme: CardThemeData(
         color: surface,
         elevation: 0,
@@ -49,7 +80,7 @@ abstract final class AerotechTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: surface,
+        fillColor: inputFill,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 16,

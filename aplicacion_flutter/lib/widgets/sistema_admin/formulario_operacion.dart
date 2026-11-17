@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 
 import 'validacion_operaciones.dart';
 import '../../services/api_service.dart';
+import '../presentacion/dialogo_aerotech.dart';
+import '../../theme/aerotech_theme.dart';
 
 typedef Registro = Map<String, dynamic>;
 
@@ -106,7 +108,11 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
         key: ValueKey(clave),
         controller: campo(clave, inicial),
         enabled: !_guardando,
-        decoration: InputDecoration(labelText: etiqueta, helperText: ayuda),
+        decoration: InputDecoration(
+          labelText: etiqueta,
+          helperText: ayuda,
+          helperMaxLines: 4,
+        ),
         keyboardType: teclado,
         autovalidateMode: AutovalidateMode.onUserInteraction,
         validator: validar ?? ValidacionOperaciones.requerido,
@@ -171,6 +177,7 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
           ? null
           : 'Usa exactamente 2 letras',
     ),
+    const _SeccionFormulario('Ubicación y zona horaria', Icons.public),
     texto(
       'latitud',
       'Latitud',
@@ -229,9 +236,9 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
   List<Widget> aeronave() => [
     texto('matricula', 'Matrícula', mayusculas: true),
     texto('modelo', 'Modelo'),
-    const Text(
+    const _SeccionFormulario(
       'Distribución de cabina',
-      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+      Icons.event_seat_outlined,
     ),
     const Text(
       'Las filas no se repiten entre clases. ABC|DEF representa dos grupos separados por un pasillo.',
@@ -383,6 +390,7 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
       (v) => setState(() => _avion = v),
       (e) => '${e['matricula']} · ${e['modelo']}',
     ),
+    const _SeccionFormulario('Horarios del viaje', Icons.schedule),
     const Text(
       'Horarios civiles locales de cada aeropuerto. La duración y los cruces de zona se validan en el servidor.',
     ),
@@ -398,6 +406,8 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
           ),
         ),
       ),
+    if (avion != null)
+      const _SeccionFormulario('Cabina y tarifas', Icons.payments_outlined),
     if (avion != null)
       Text(
         'Capacidad de cabina: ${clasesAvion.fold<int>(0, (s, c) => s + ValidacionOperaciones.capacidad(c))} asientos (solo lectura)',
@@ -538,62 +548,46 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
     };
     return PopScope(
       canPop: !_guardando,
-      child: Dialog(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 650),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  '${widget.registro == null ? 'Crear' : 'Editar'} · ${widget.recurso}',
-                  style: Theme.of(context).textTheme.titleLarge,
+      child: DialogoAerotech(
+        maxWidth: 650,
+        title:
+            '${widget.registro == null ? 'Crear' : 'Editar'} · ${widget.recurso}',
+        subtitle: 'Completa los datos de la operación. Revisa los campos antes de guardar.',
+        eyebrow: 'CENTRO DE OPERACIONES',
+        icon: switch (widget.recurso) {
+          'aeropuertos' => Icons.local_airport,
+          'aviones' => Icons.airplanemode_active,
+          'rutas' => Icons.route_outlined,
+          _ => Icons.flight_takeoff,
+        },
+        actions: [
+          TextButton(
+            onPressed: _guardando ? null : () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: _guardando ? null : guardar,
+            child: Text(_guardando ? 'Guardando…' : 'Guardar'),
+          ),
+        ],
+        child: Form(
+          key: _form,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'DATOS DEL REGISTRO',
+                style: TextStyle(
+                  color: AerotechTheme.blue,
+                  fontSize: 11,
+                  letterSpacing: 1.3,
+                  fontWeight: FontWeight.w700,
                 ),
-                const SizedBox(height: 16),
-                Flexible(
-                  child: SingleChildScrollView(
-                    child: Form(
-                      key: _form,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          ...campos,
-                          if (_error != null)
-                            Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Text(
-                                _error!,
-                                style: TextStyle(
-                                  color: Theme.of(context).colorScheme.error,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: _guardando
-                          ? null
-                          : () => Navigator.pop(context),
-                      child: const Text('Cancelar'),
-                    ),
-                    const SizedBox(width: 12),
-                    FilledButton(
-                      onPressed: _guardando ? null : guardar,
-                      child: Text(_guardando ? 'Guardando…' : 'Guardar'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 18),
+              ...campos,
+              if (_error != null) PanelMensaje(_error!, error: true),
+            ],
           ),
         ),
       ),
@@ -645,4 +639,30 @@ class _ClaseEditable {
       c.dispose();
     }
   }
+}
+
+class _SeccionFormulario extends StatelessWidget {
+  const _SeccionFormulario(this.title, this.icon);
+  final String title;
+  final IconData icon;
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: 14, bottom: 16),
+    child: Row(
+      children: [
+        Icon(icon, size: 20, color: AerotechTheme.blue),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(
+              color: AerotechTheme.navy,
+              fontWeight: FontWeight.w700,
+              fontSize: 17,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 }

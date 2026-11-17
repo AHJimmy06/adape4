@@ -5,6 +5,8 @@ import '../../services/api_service.dart';
 import '../../utils/checkout_operacion.dart';
 import '../../utils/checkout_launcher.dart';
 import 'cabina_sistema.dart';
+import '../../theme/aerotech_theme.dart';
+import '../presentacion/dialogo_aerotech.dart';
 
 List<Map<String, dynamic>> mapas(dynamic values) => (values as List? ?? [])
     .map((v) => Map<String, dynamic>.from(v as Map))
@@ -84,17 +86,19 @@ class _CompraSistemaDialogState extends State<CompraSistemaDialog> {
         setState(() => _busy = false);
         await showDialog<void>(
           context: context,
-          builder: (c) => AlertDialog(
-            title: const Text('La disponibilidad cambió'),
-            content: const Text(
-              'Otro pasajero eligió un asiento. Actualizaremos toda la cabina; elige nuevamente.',
-            ),
+          builder: (c) => DialogoAerotech(
+            title: 'La disponibilidad cambió',
+            subtitle: 'Revisa la selección antes de continuar.',
+            icon: Icons.event_seat_outlined,
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(c),
                 child: const Text('Aceptar'),
               ),
             ],
+            child: const PanelMensaje(
+              'Otro pasajero eligió un asiento. Actualizaremos toda la cabina; elige nuevamente.',
+            ),
           ),
         );
         _seleccion.clear();
@@ -114,48 +118,18 @@ class _CompraSistemaDialogState extends State<CompraSistemaDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: Text(
-      _pedido == null
-          ? 'Elige tus asientos · ${widget.vuelo['codigo']}'
-          : 'Pedido · Stripe TEST',
-    ),
-    content: SizedBox(
-      width: 680,
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (_error != null)
-              Text(_error!, style: const TextStyle(color: Colors.red)),
-            if (_busy) const LinearProgressIndicator(),
-            if (_pedido != null)
-              PedidoSistema(
-                api: widget.api,
-                pedido: _pedido!,
-                launcher: widget.launcher,
-                onRefresh: widget.onRefresh,
-              )
-            else if (_mapa != null)
-              CabinaSistema(
-                clases: mapas(_mapa!['clases']),
-                asientos: mapas(_mapa!['asientos']),
-                seleccionados: _seleccion,
-                bloqueada: _busy,
-                onChanged: (code) => setState(() {
-                  if (!_seleccion.add(code)) _seleccion.remove(code);
-                  _operacion.limpiar();
-                }),
-              ),
-            if (_mapa == null && !_busy)
-              TextButton(
-                onPressed: _cargar,
-                child: const Text('Reintentar cabina'),
-              ),
-          ],
-        ),
-      ),
-    ),
+  Widget build(BuildContext context) => DialogoAerotech(
+    key: ValueKey(_pedido == null ? 'cabina' : 'pedido'),
+    title: _pedido == null
+        ? 'Elige tus asientos · ${widget.vuelo['codigo']}'
+        : 'Pedido · Stripe TEST',
+    subtitle: _pedido == null
+        ? 'Selecciona tu lugar y revisa los detalles de tu viaje.'
+        : 'Revisa tu pedido y continúa al pago seguro.',
+    eyebrow: _pedido == null ? 'TU PRÓXIMO VIAJE' : 'RESUMEN DE COMPRA',
+    icon: _pedido == null
+        ? Icons.airline_seat_recline_normal
+        : Icons.receipt_long_outlined,
     actions: [
       TextButton(
         onPressed: _busy ? null : () => Navigator.pop(context),
@@ -167,6 +141,36 @@ class _CompraSistemaDialogState extends State<CompraSistemaDialog> {
           child: Text('Continuar con ${_seleccion.length} asiento(s)'),
         ),
     ],
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (_error != null) PanelMensaje(_error!, error: true),
+        if (_busy) const LinearProgressIndicator(),
+        if (_pedido != null)
+          PedidoSistema(
+            api: widget.api,
+            pedido: _pedido!,
+            launcher: widget.launcher,
+            onRefresh: widget.onRefresh,
+          )
+        else if (_mapa != null)
+          CabinaSistema(
+            clases: mapas(_mapa!['clases']),
+            asientos: mapas(_mapa!['asientos']),
+            seleccionados: _seleccion,
+            bloqueada: _busy,
+            onChanged: (code) => setState(() {
+              if (!_seleccion.add(code)) _seleccion.remove(code);
+              _operacion.limpiar();
+            }),
+          ),
+        if (_mapa == null && !_busy)
+          TextButton(
+            onPressed: _cargar,
+            child: const Text('Reintentar cabina'),
+          ),
+      ],
+    ),
   );
 }
 
@@ -246,6 +250,25 @@ class _PedidoSistemaState extends State<PedidoSistema> {
     }
   }
 
+  Widget _importe(String label, String value) => Wrap(
+    alignment: WrapAlignment.spaceBetween,
+    spacing: 12,
+    runSpacing: 4,
+    children: [
+      Text(
+        '$label:',
+        style: const TextStyle(color: AerotechTheme.textSecondary),
+      ),
+      Text(
+        value,
+        style: const TextStyle(
+          color: AerotechTheme.navy,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    ],
+  );
+
   @override
   Widget build(BuildContext context) {
     final estado = _pedido['estado'];
@@ -254,61 +277,146 @@ class _PedidoSistemaState extends State<PedidoSistema> {
       'pendiente_pago',
       'revision_pago',
     ].contains(estado);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              estado == 'pagado'
-                  ? 'Pago confirmado · reserva emitida'
-                  : 'Pedido: $estado',
-              style: Theme.of(context).textTheme.titleMedium,
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AerotechTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AerotechTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Align(alignment: Alignment.centerLeft, child: EtiquetaEstado(estado)),
+          const SizedBox(height: 16),
+          const Text(
+            'TUS ASIENTOS',
+            style: TextStyle(
+              color: AerotechTheme.textSecondary,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.3,
             ),
-            Text(
-              'Asientos: ${mapas(_pedido['asientos']).map((s) => '${s['codigo']} (${s['clase_codigo']})').join(', ')}',
-            ),
-            Text(
-              'Subtotal: ${dinero(_pedido['subtotal_centavos'])} · IVA: ${dinero(_pedido['iva_centavos'])}',
-            ),
-            Text('Total: ${dinero(_pedido['total_centavos'])}'),
-            if (pendiente) ...[
-              Text(
-                'Vence: ${_pedido['vence_en'] ?? 'consulta el servidor'} · retención de 35 minutos',
-              ),
-              const Text(
-                'Pagar o volver de Stripe no confirma la reserva. Actualiza el pago para verificarlo.',
-              ),
-            ],
-            if (_pedido['mensaje'] != null) Text(_pedido['mensaje'].toString()),
-            if (_error != null)
-              Text(_error!, style: const TextStyle(color: Colors.red)),
-            if (_busy) const LinearProgressIndicator(),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                if (pendiente && _pedido['checkout_url'] != null)
-                  FilledButton(
-                    onPressed: _busy ? null : _abrir,
-                    child: const Text('Pagar con Stripe TEST'),
-                  ),
-                OutlinedButton(
-                  onPressed: _busy ? null : () => _actualizar(),
-                  child: const Text('Actualizar pago'),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final seat in mapas(_pedido['asientos']))
+                Chip(
+                  avatar: const Icon(Icons.event_seat_outlined, size: 18),
+                  label: Text('${seat['codigo']} · ${seat['clase_codigo']}'),
+                  backgroundColor: AerotechTheme.inputFill,
+                  side: const BorderSide(color: AerotechTheme.border),
                 ),
-                if (pendiente)
-                  TextButton(
-                    onPressed: _busy
-                        ? null
-                        : () => _actualizar(abandonar: true),
-                    child: const Text('Abandonar pedido'),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: AerotechTheme.inputFill,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AerotechTheme.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _importe('Subtotal', dinero(_pedido['subtotal_centavos'])),
+                const SizedBox(height: 8),
+                _importe('IVA', dinero(_pedido['iva_centavos'])),
+                const Divider(height: 20),
+                const Text(
+                  'TOTAL A PAGAR',
+                  style: TextStyle(
+                    color: AerotechTheme.textSecondary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.3,
                   ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  dinero(_pedido['total_centavos']),
+                  style: const TextStyle(
+                    fontSize: 30,
+                    fontWeight: FontWeight.w800,
+                    color: AerotechTheme.navy,
+                    letterSpacing: -1,
+                  ),
+                ),
               ],
             ),
+          ),
+          const SizedBox(height: 16),
+          AccionesDialogo(
+            children: [
+              if (pendiente && _pedido['checkout_url'] != null)
+                FilledButton.icon(
+                  onPressed: _busy ? null : _abrir,
+                  icon: const Icon(Icons.lock_outline, size: 18),
+                  label: const Text(
+                    'Pagar con Stripe TEST',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              OutlinedButton.icon(
+                onPressed: _busy ? null : () => _actualizar(),
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text(
+                  'Actualizar pago',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
+          ),
+          if (pendiente) ...[
+            const SizedBox(height: 18),
+            const Text(
+              'Vencimiento del pedido',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: AerotechTheme.navy,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              fechaLegible(_pedido['vence_en'], horaEcuador: true),
+              style: const TextStyle(color: AerotechTheme.textSecondary),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Retención de asientos: 35 minutos',
+              style: TextStyle(
+                fontSize: 12,
+                color: AerotechTheme.textSecondary,
+              ),
+            ),
+            const PanelMensaje(
+              'Pagar o volver de Stripe no confirma la reserva. Actualiza el pago para verificarlo.',
+            ),
           ],
-        ),
+          if (_pedido['mensaje'] != null)
+            PanelMensaje(_pedido['mensaje'].toString()),
+          if (_error != null) PanelMensaje(_error!, error: true),
+          if (_busy) const LinearProgressIndicator(),
+          const SizedBox(height: 16),
+          if (pendiente) ...[
+            const SizedBox(height: 14),
+            const Divider(),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                style: TextButton.styleFrom(
+                  foregroundColor: Theme.of(context).colorScheme.error,
+                ),
+                onPressed: _busy ? null : () => _actualizar(abandonar: true),
+                child: const Text('Abandonar pedido'),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

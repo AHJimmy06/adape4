@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:aplicacion_flutter/models/usuario.dart';
+
 import 'package:aplicacion_flutter/pages/sistema_admin_page.dart';
 import 'package:aplicacion_flutter/services/api_service.dart';
 import 'package:aplicacion_flutter/theme/aerotech_theme.dart';
@@ -9,11 +11,22 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 class _AdminApi extends ApiService {
-  _AdminApi(http.Client client, {this.admin = true})
-    : super(client: client, baseUrl: Uri.parse('https://example.test')) {
+  _AdminApi(
+    http.Client client, {
+    this.admin = true,
+    this.currentId = 'operator',
+  }) : super(client: client, baseUrl: Uri.parse('https://example.test')) {
     establecerToken('test-token');
   }
   final bool admin;
+  final String currentId;
+  @override
+  Usuario get usuarioActual => Usuario(
+    id: currentId,
+    nombre: 'Operator',
+    correo: 'operator@example.test',
+    rol: 'ADMIN',
+  );
   @override
   bool get esAdministrador => admin;
 }
@@ -24,6 +37,7 @@ void main() {
   late String? conflict;
   var errorCarga = false;
   var estadoMutacion = 409;
+  var rolUsuario = 'USER';
   final departure = DateTime.now().add(const Duration(days: 3));
   String local(DateTime d) => '${d.toIso8601String().substring(0, 10)}T09:00';
   setUp(() {
@@ -31,6 +45,7 @@ void main() {
     conflict = null;
     errorCarga = false;
     estadoMutacion = 409;
+    rolUsuario = 'USER';
     store = {
       'aeropuertos': [
         {
@@ -116,7 +131,11 @@ void main() {
       },
     ];
   });
-  Future<void> abrir(WidgetTester tester, {bool admin = true}) async {
+  Future<void> abrir(
+    WidgetTester tester, {
+    bool admin = true,
+    String currentId = 'operator',
+  }) async {
     tester.view.physicalSize = const Size(1400, 1600);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -137,6 +156,14 @@ void main() {
           );
         }
         if (r.url.path == '/api/admin/usuarios') {
+          if (r.method == 'POST') {
+            return http.Response(
+              jsonEncode({
+                'usuario': {'id': 'new', ...jsonDecode(r.body)},
+              }),
+              201,
+            );
+          }
           return http.Response(
             jsonEncode({
               'usuarios': [
@@ -144,7 +171,7 @@ void main() {
                   'id': 'u1',
                   'nombre': 'Ana',
                   'correo': 'ana@example.test',
-                  'rol': 'USER',
+                  'rol': rolUsuario,
                 },
               ],
             }),
@@ -171,6 +198,7 @@ void main() {
         );
       }),
       admin: admin,
+      currentId: currentId,
     );
     await tester.pumpWidget(
       MaterialApp(
@@ -389,11 +417,81 @@ void main() {
     await tab(t, 'Usuarios');
     await t.tap(find.text('Promover a ADMIN'));
     await t.pumpAndSettle();
-    expect(requests.where((r) => r.method == 'POST'), isEmpty);
-    await t.tap(find.text('Confirmar'));
+    expect(requests.where((r) => r.method == 'PUT'), isEmpty);
+    expect(
+      t
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Confirmar cambio'),
+          )
+          .onPressed,
+      isNull,
+    );
+    await t.enterText(
+      find.byKey(const ValueKey('confirmar_correo')),
+      'ana@example.test',
+    );
+    await t.pump();
+    await t.tap(find.text('Confirmar cambio'));
     await t.pumpAndSettle();
-    expect(mutation().url.path, '/api/admin/usuarios/u1/promover');
+    expect(mutation().url.path, '/api/admin/usuarios/u1/rol');
+    expect(mutation().method, 'PUT');
+    expect(jsonDecode(mutation().body), {'rol': 'ADMIN'});
   });
+  testWidgets('Users creates a USER account through the administrative form', (
+    t,
+  ) async {
+    await abrir(t);
+    await tab(t, 'Usuarios');
+    await t.tap(find.byKey(const ValueKey('crear_usuario')));
+    await t.pumpAndSettle();
+    await t.enterText(
+      find.byKey(const ValueKey('usuario_nombre')),
+      'New Person',
+    );
+    await t.enterText(
+      find.byKey(const ValueKey('usuario_correo')),
+      'new@example.test',
+    );
+    await t.enterText(
+      find.byKey(const ValueKey('usuario_contrasena')),
+      'SecurePass123',
+    );
+    await t.tap(find.text('Crear cuenta'));
+    await t.pumpAndSettle();
+    final request = requests.singleWhere((r) => r.method == 'POST');
+    expect(request.url.path, '/api/admin/usuarios');
+    expect(jsonDecode(request.body)['rol'], 'USER');
+    expect(find.text('Crear cuenta'), findsNothing);
+  });
+  testWidgets(
+    'Users can demote another ADMIN but cannot change their own role',
+    (t) async {
+      rolUsuario = 'ADMIN';
+      await abrir(t, currentId: 'u1');
+      await tab(t, 'Usuarios');
+      expect(
+        t
+            .widget<OutlinedButton>(find.byKey(const ValueKey('rol_u1')))
+            .onPressed,
+        isNull,
+      );
+      expect(find.text('Tu cuenta'), findsOneWidget);
+      await abrir(t);
+      await tab(t, 'Usuarios');
+      await t.tap(find.text('Retirar ADMIN'));
+      await t.pumpAndSettle();
+      expect(requests.where((r) => r.method == 'PUT'), isEmpty);
+      await t.enterText(
+        find.byKey(const ValueKey('confirmar_correo')),
+        'ana@example.test',
+      );
+      await t.pump();
+      await t.tap(find.text('Confirmar cambio'));
+      await t.pumpAndSettle();
+      expect(mutation().url.path, '/api/admin/usuarios/u1/rol');
+      expect(jsonDecode(mutation().body), {'rol': 'USER'});
+    },
+  );
   testWidgets('Catálogos vacíos conservan estados útiles y creación', (
     t,
   ) async {

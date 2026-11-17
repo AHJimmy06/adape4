@@ -11,7 +11,7 @@ from flask import Flask, Response, g, jsonify, request
 from backend.models import ErrorAPI, reserva_publica, usuario_publico
 from backend.repository import RepositorioSupabase
 from backend.services import (ServicioAutenticacion, validar_filtros_vuelos,
-                              validar_login, validar_registro)
+                              validar_login, validar_registro, validar_rol)
 
 def create_app(repository=None, jwt_secret=None, stripe_provider=None):
     load_dotenv(Path(__file__).with_name('.env'))
@@ -93,6 +93,23 @@ def create_app(repository=None, jwt_secret=None, stripe_provider=None):
     def listar_usuarios():
         return jsonify([usuario_publico(usuario) for usuario in repository.listar_usuarios()]), 200
 
+    @app.route("/api/admin/usuarios", methods=["POST"])
+    @requiere_administrador
+    def crear_usuario_administrado():
+        datos = request.get_json(silent=True)
+        nombre, correo, contrasena = validar_registro(datos)
+        rol = validar_rol(datos.get("rol", "USER"))
+        usuario = auth.crear_usuario_administrado(g.usuario["id"], nombre, correo, contrasena, rol)
+        return jsonify({"mensaje": "Usuario creado correctamente.", "usuario": usuario_publico(usuario)}), 201
+
+    @app.route("/api/admin/usuarios/<usuario_id>/rol", methods=["PUT"])
+    @requiere_administrador
+    def cambiar_rol_usuario(usuario_id):
+        datos = request.get_json(silent=True)
+        rol = validar_rol(datos.get("rol") if isinstance(datos, dict) else None)
+        usuario = repository.administrar_usuario(g.usuario["id"], "rol", {"id": usuario_id, "rol": rol})
+        return jsonify({"usuario": usuario_publico(usuario)}), 200
+
     @app.route("/api/admin/usuarios/<usuario_id>/promover", methods=["POST"])
     @requiere_administrador
     def promover_usuario(usuario_id):
@@ -102,7 +119,12 @@ def create_app(repository=None, jwt_secret=None, stripe_provider=None):
             es_propio = usuario_id == str(g.usuario["id"])
         if es_propio:
             raise ErrorAPI("promocion_invalida", "Solo puedes promover a otro usuario registrado.", 400)
-        usuario = repository.promover_usuario(usuario_id)
+        try:
+            usuario = repository.administrar_usuario(g.usuario["id"], "rol", {"id": usuario_id, "rol": "ADMIN"})
+        except ErrorAPI as error:
+            if error.codigo == "usuario_no_encontrado":
+                raise ErrorAPI("usuario_no_encontrado", "No se encontro el usuario solicitado.", 404) from error
+            raise
         if usuario is None:
             raise ErrorAPI("usuario_no_encontrado", "No se encontro el usuario solicitado.", 404)
         return jsonify({"usuario": usuario_publico(usuario)}), 200
