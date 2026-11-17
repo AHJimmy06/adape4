@@ -1,129 +1,39 @@
-# APE 4 — Sistema de reservas de vuelos
+# AeroTech — sistema integral APE4
 
-Aplicación de ejemplo para la APE 4 de Aplicaciones Distribuidas. Implementa una arquitectura SOA con una aplicación Flutter, una API REST en Flask y Supabase/PostgreSQL.
+Sistema de reservas de una sola aerolínea: Flutter, API Flask en Render, PostgreSQL administrado en Supabase y pagos **Stripe TEST**. La guía principal es `MATERIA/APE4_AD.pdf`; los materiales anteriores se usaron como referencia de estilo.
 
-## Componentes
-
-- `backend/`: API REST, autenticación JWT y acceso del servidor a Supabase.
-- `database/schema.sql`: tablas, políticas y funciones SQL para reservas/cancelaciones atómicas.
-- `database/migrations/001_iva_reservas.sql`: actualización idempotente para bases existentes; preserva el total histórico y lo registra como subtotal sin IVA retroactivo.
-- `render.yaml`: Blueprint para crear un servicio Flask independiente en Render.
-- `database/semilla.sql`: vuelos ficticios para probar la aplicación.
-- `aplicacion_flutter/`: cliente móvil Flutter organizado en `models/`, `services/` y `pages/`, siguiendo los ejemplos de la Unidad 4.
-- `documentacion/arquitectura.mmd`: diagrama SOA en Mermaid.
-- `odd/tasks/ape4-reservas-vuelos.md`: alcance, tareas y bitácora de desarrollo.
-
-## Requisitos
-
-- Python 3.11 o superior.
-- Flutter SDK estable y Dart.
-- Proyecto gratuito de Supabase con acceso al SQL Editor.
-- No hace falta Docker para ejecutar esta versión local.
-
-## Preparar Supabase
-
-1. Abre el SQL Editor de tu proyecto Supabase.
-2. Para una base nueva, ejecuta `database/schema.sql`. Si ya tienes la tabla `reservas`, ejecuta primero `database/migrations/001_iva_reservas.sql`.
-3. Ejecuta `database/semilla.sql` para crear vuelos ficticios.
-4. Copia la URL del proyecto y su clave `service_role`. **La clave de servicio solo va en Flask; nunca en Flutter, `render.yaml` ni Git.**
-
-Cada nueva reserva conserva el precio del vuelo como `subtotal`, calcula `iva = redondear(subtotal × 0.15, 2)` y guarda `total = subtotal + iva`. La migración preserva los totales históricos sin aplicarles un impuesto retroactivo. El XML generado es un comprobante académico de reserva, no una factura fiscal.
-
-## Ejecutar la API Flask
-
-Desde la raíz del proyecto, en PowerShell:
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r backend/requirements.txt
-Copy-Item backend/.env.example backend/.env
-```
-
-Edita `backend/.env` con `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` y un `JWT_SECRET` aleatorio de al menos 32 bytes. Luego, todavía desde la raíz:
-
-```powershell
-python -m backend.app
-```
-
-La API queda disponible en `http://localhost:5000`.
-
-## Ejecutar Flutter
-
-En otra terminal:
+## Usar la aplicación: solo iniciar Flutter
 
 ```powershell
 cd aplicacion_flutter
 flutter pub get
-flutter run --dart-define=API_BASE_URL=http://10.0.2.2:5000
+flutter run -d chrome --dart-define=API_BASE_URL=https://adape4-reservas-vuelos-api.onrender.com
 ```
 
-`10.0.2.2` permite que el emulador Android llegue al equipo anfitrión. En Chrome usa `http://localhost:5000`; en un teléfono físico usa la dirección IP local de la computadora. El tráfico HTTP está habilitado solo en la variante debug para desarrollo local. Para builds release configura la URL HTTPS de la API publicada en Render.
+No inicie Docker ni el backend local para utilizar esta API. Las cuentas existentes y el ADMIN se conservaron; las cuentas nuevas se registran como USER. Nunca introduzca tarjetas reales.
 
-## Funciones REST
+## Funciones
 
-| Método | Ruta | Acceso | Uso |
-|---|---|---|---|
-| POST | `/api/usuarios/registro` | Público | Registrar usuario |
-| POST | `/api/auth/login` | Público | Iniciar sesión y recibir JWT |
-| GET | `/api/vuelos?origen=&destino=&fecha=` | Público | Consultar/filtrar vuelos |
-| POST | `/api/reservas` | JWT | Reservar asientos disponibles |
-| GET | `/api/reservas` | JWT | Listar las reservas propias |
-| GET | `/api/reservas/<id>` | JWT | Consultar una reserva propia |
-| GET | `/api/reservas/<id>/comprobante.xml` | JWT | Obtener el comprobante XML de una reserva propia |
-| DELETE | `/api/reservas/<id>` | JWT | Cancelar una reserva propia |
+- ADMIN: aeropuertos con coordenadas y zona horaria, aviones con distribución y clases, rutas, programación y tarifas de vuelos, gestión de usuarios/promoción autorizada.
+- USER: búsqueda, mapa nacional o globo3D internacional, selección de asientos concretos, Checkout alojado, reservas propias, cancelaciones parciales y comprobante XML académico.
+- Inventario transaccional, retenciones temporales, versiones de edición, protección de vuelos comprometidos y control de solapamiento del avión por instantes UTC.
+- Confirmación de pagos y devoluciones exclusivamente del servidor/proveedor; webhooks firmados, importes en centavos e idempotencia ante fallos después de escritura.
 
-Las rutas privadas reciben `Authorization: Bearer <token>`. La identidad se toma del JWT; el cliente no puede reservar o consultar en nombre de otro usuario. Los errores se devuelven en JSON. Las reservas y sus comprobantes muestran subtotal, IVA (15 %) y total.
+La cabina inicial es ficticia:36 asientos,8 Ejecutiva y28 Económica. Hay8 aeropuertos y3 vuelos futuros al día de la migración. Fechas/stock cambian al utilizar el sistema.
 
-## Desplegar el backend en Render
+## Documentación y evidencia
 
-El archivo `render.yaml` crea un servicio web Python separado para esta aplicación; no reutilices el servicio `AD-2026` ni otro servicio ajeno.
+[Índice de la entrega Markdown](docs/ape4/README.md). Incluye guía I–XI, arquitectura PNG, contratos, manual, matriz, acta de ejecución y26 imágenes reales/diagrama. Las capturas `local-aislado` están identificadas y no se presentan como producción remota.
 
-1. En Render, crea un Blueprint y vincula el repositorio `AHJimmy06/adape4` que contiene este archivo.
-2. Antes del primer despliegue, aplica la migración de Supabase indicada arriba. Render no modifica la base de datos; las reservas antiguas conservan el importe original y quedan con IVA cero.
-3. Cuando Render lo solicite, configura `SUPABASE_URL` y `SUPABASE_SERVICE_KEY` como variables secretas del servicio. El Blueprint genera `JWT_SECRET` y define `JWT_EXPIRES_MINUTES`.
-4. Confirma que el servicio termine el despliegue y prueba `https://<servicio>.onrender.com/api/vuelos`.
-5. Compila el cliente Flutter release con `--dart-define=API_BASE_URL=https://<servicio>.onrender.com`.
+## Backend y base de datos
 
-La configuración usa `gunicorn` con `backend.wsgi:app`, enlazado a `0.0.0.0:$PORT`; el endpoint `/api/vuelos` es el health check. No se incluyen secretos en el Blueprint ni en el repositorio. Consulta [Blueprints de Render](https://render.com/docs/blueprint-spec) y [variables y secretos](https://render.com/docs/configure-environment-variables).
+- `backend/`: Flask, JWT/roles, coordinación de Stripe y adaptador Supabase.
+- `database/schema.sql`: instalación en base vacía.
+- `database/migrations/008_sistema_integral.sql`: reinicio único autorizado del dominio antiguo. **Ya aplicado en el proyecto remoto APE4: no repetirlo.** No borra usuarios/tokens; la guardia de versión8 rechaza reaplicaciones.
+- `render.yaml`: despliegue, secretos definidos exclusivamente en el entorno de Render.
 
-## Pruebas
+No colocar claves en Flutter, Git, documentación o capturas. `STRIPE_SECRET_KEY` debe ser TEST; el webhook requiere firma incluso en pruebas. La API está fijada a `2026-05-27.dahlia`, igual que el webhook, para no depender de cambios incompatibles del SDK.
 
-API:
+## Verificación observada
 
-```powershell
-python -m pip install -r backend/requirements.txt
-python -m pytest backend/tests -q
-```
-
-Aplicación Flutter:
-
-```powershell
-cd aplicacion_flutter
-flutter analyze
-flutter test
-```
-
-Las pruebas de Flask usan un repositorio falso y no requieren claves Supabase. La migración se entrega para su ejecución por el titular en el SQL Editor; no se modifica una base remota durante las pruebas locales.
-
-## Seguridad y límites
-
-- Contraseñas se guardan con hash scrypt; no se almacenan en texto plano.
-- Los JWT se firman en Flask y tienen expiración; las rutas privadas verifican su registro activo.
-- El cliente guarda el token solo en memoria: al cerrar la app se debe iniciar sesión nuevamente.
-- Supabase aplica RLS y solo concede acceso a tablas/funciones a `service_role`; el backend es quien valida la autorización de usuario.
-- Las funciones SQL bloquean la actualización de inventario dentro de una transacción para impedir sobreventa y restauran asientos al cancelar.
-- El Blueprint permite crear el servicio Render desde el repositorio del proyecto; las credenciales se ingresan en Render y nunca se almacenan en el cliente móvil.
-
-
-## Acceso desde Flutter Web (CORS)
-
-La API permite peticiones desde `http://localhost:<puerto>` y
-`http://127.0.0.1:<puerto>` para el cliente Flutter local. También permite orígenes
-exactos configurados en `CORS_ALLOWED_ORIGINS`, separados por comas y sin barra
-final (por ejemplo, `https://aerotech.example`). No se habilita un origen universal
-ni el envío de cookies. Las reservas siguen requiriendo un JWT Bearer válido.
-
-El navegador envía `OPTIONS` antes del login JSON; la API responde con las
-cabeceras CORS tanto en la negociación como en las respuestas normales y errores.
-Cambiar la URL en Flutter no reemplaza esta configuración del servidor.
+123 pruebas backend,141 Flutter, análisis sin incidencias y sondas independientes con PostgreSQL real aislado. Recorrido remoto TEST: compra20585centavos, devolución parcial6785 y restante13800; dos devoluciones exactas, historial conservado y todos los asientos nuevamente libres. El acta explica errores iniciales, correcciones y limitaciones; no se ensayaron dispositivos físicos ni dinero real.

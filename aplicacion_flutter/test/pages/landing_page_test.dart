@@ -1,7 +1,7 @@
 import 'package:aplicacion_flutter/pages/landing_page.dart';
 import 'package:aplicacion_flutter/pages/login_page.dart';
 import 'package:aplicacion_flutter/pages/registro_page.dart';
-import 'package:aplicacion_flutter/pages/vuelos_page.dart';
+import 'package:aplicacion_flutter/pages/sistema_vuelos_page.dart';
 import 'package:aplicacion_flutter/services/api_service.dart';
 import 'package:aplicacion_flutter/theme/aerotech_theme.dart';
 import 'package:flutter/material.dart';
@@ -13,7 +13,47 @@ Widget _globo(BuildContext context) =>
     const SizedBox(key: ValueKey('globo-prueba'), width: 360, height: 360);
 
 void main() {
-  for (final ancho in [360.0, 768.0, 1440.0]) {
+  for (final ancho in [360.0, 768.0, 904.0, 1440.0]) {
+    testWidgets('landing mantiene botones y tarjetas uniformes a $ancho', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(Size(ancho, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AerotechTheme.light,
+          home: LandingPage(globoBuilder: _globo),
+        ),
+      );
+      final crear = tester.getSize(
+        find.byKey(const ValueKey('landing-crear-cuenta')),
+      );
+      final explorar = tester.getSize(
+        find.widgetWithText(OutlinedButton, 'Explorar vuelos'),
+      );
+      expect(crear.width, explorar.width);
+      expect(crear.height, explorar.height);
+      expect(crear.height, greaterThanOrEqualTo(52));
+      final tarjetas =
+          ['Encuentra tu ruta', 'Imagina el recorrido', 'Organiza tu viaje']
+              .map(
+                (titulo) => tester.getSize(
+                  find
+                      .ancestor(
+                        of: find.text(titulo),
+                        matching: find.byType(Container),
+                      )
+                      .first,
+                ),
+              )
+              .toList();
+      expect(tarjetas[0], tarjetas[1]);
+      expect(tarjetas[1], tarjetas[2]);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final ancho in [360.0, 768.0, 904.0, 1440.0]) {
     testWidgets('landing adaptable sin desbordes a $ancho', (tester) async {
       await tester.binding.setSurfaceSize(Size(ancho, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -101,7 +141,7 @@ void main() {
     await tester.ensureVisible(find.text('Iniciar sesión'));
     await tester.tap(find.text('Iniciar sesión'));
     await tester.pumpAndSettle();
-    expect(find.byType(VuelosPage), findsOneWidget);
+    expect(find.byType(SistemaVuelosPage), findsOneWidget);
     expect(find.byType(LandingPage, skipOffstage: false), findsOneWidget);
     expect(
       find.byKey(const ValueKey('globo-prueba'), skipOffstage: false),

@@ -19,3 +19,9 @@ aplicacion_flutter/ios/Flutter/ephemeral/
 # Archivos del editor
 .idea/
 *.iml
+
+# Additional generated caches and local secrets
+.env
+.env.*
+!.env.example
+node_modules/
