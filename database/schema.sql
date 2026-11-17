@@ -27,7 +27,7 @@ create table if not exists public.reservas (
     id uuid primary key default gen_random_uuid(),
     usuario_id uuid not null references public.usuarios(id),
     vuelo_id uuid not null references public.vuelos(id),
-    cantidad integer not null check (cantidad between 1 and 9),
+    cantidad integer not null check (cantidad >= 1),
     subtotal numeric(10, 2) not null check (subtotal >= 0),
     iva numeric(10, 2) not null check (iva >= 0),
     porcentaje_iva numeric(5, 2) not null default 15.00 check (porcentaje_iva between 0.00 and 100.00),
@@ -92,7 +92,7 @@ declare
     iva_reserva numeric(10, 2);
     porcentaje_reserva numeric(5, 2) := 15.00;
 begin
-    if p_cantidad is null or p_cantidad < 1 or p_cantidad > 9 then
+    if p_cantidad is null or p_cantidad < 1 then
         raise exception using errcode = '22023', message = 'CANTIDAD_INVALIDA';
     end if;
 

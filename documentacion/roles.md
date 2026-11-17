@@ -22,3 +22,13 @@ Missing/invalid authentication returns 401; a current USER accessing administrat
 ## Checks
 
 Run `uv run --with flask --with pyjwt --with python-dotenv --with pytest python -m pytest backend/tests -q -p no:cacheprovider`. SQL tests check additive structure and bootstrap guardrails only; they do not establish execution against PostgreSQL. Live migration and deployed smoke checks remain rollout responsibilities.
+
+## Reservas segun disponibilidad
+
+`POST /api/reservas` acepta una cantidad entera positiva representable en PostgreSQL (hasta 2147483647), sin maximo comercial de nueve. El limite efectivo es el inventario disponible del vuelo. Una cantidad superior al inventario devuelve 409 sin crear reservas ni descontar asientos; valores no enteros, booleanos, cero, negativos o fuera de rango devuelven 400.
+
+En bases existentes, aplicar `database/migrations/004_reservas_disponibilidad.sql` antes de desplegar la API. La migracion es transaccional e idempotente; sustituye solamente `reservas_cantidad_check` y la funcion `reservar_vuelo`. Antes de aplicarla, confirmar que la restriccion existente usa ese nombre estandar y que no hay restricciones personalizadas equivalentes. No ejecutar el esquema completo sobre una base existente.
+
+La funcion conserva el descuento condicional atomico de inventario, el calculo de subtotal e IVA y los permisos exclusivos de `service_role`. No modifica reservas ni importes historicos, roles o tokens. La cancelacion devuelve la cantidad completa. Las columnas monetarias conservan su precision actual: una operacion cuyo importe no sea representable falla y revierte la transaccion; no se amplian formatos persistidos.
+
+Las pruebas locales usan un repositorio simulado y comprobaciones estructurales SQL. La ejecucion real en PostgreSQL, la reaplicacion de la migracion y la prueba de concurrencia en base real siguen pendientes del despliegue autorizado.

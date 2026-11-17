@@ -37,8 +37,8 @@ def validar_reserva(datos: Any) -> tuple[str, int]:
     vuelo_id, cantidad = datos.get("vuelo_id"), datos.get("cantidad", 1)
     if not isinstance(vuelo_id, str) or not vuelo_id.strip():
         raise ErrorAPI("vuelo_invalido", "El identificador del vuelo es obligatorio.", 400)
-    if isinstance(cantidad, bool) or not isinstance(cantidad, int) or not 1 <= cantidad <= 9:
-        raise ErrorAPI("cantidad_invalida", "La cantidad debe ser un entero entre 1 y 9.", 400)
+    if isinstance(cantidad, bool) or not isinstance(cantidad, int) or not 1 <= cantidad <= 2147483647:
+        raise ErrorAPI("cantidad_invalida", "La cantidad debe ser un entero positivo de hasta 2147483647.", 400)
     return vuelo_id.strip(), cantidad
 
 def validar_filtros_vuelos(origen: Any, destino: Any, fecha: Any) -> dict[str, str | None]:
