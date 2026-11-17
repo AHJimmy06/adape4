@@ -32,6 +32,8 @@ class FakeRepository:
             "precio": 35.0,
             "asientos_disponibles": 5,
         }]
+        for flight in self.flights:
+            flight.update(version=1, activo=True)
         self.reservations = {}
         self._lock = threading.Lock()
 
@@ -59,7 +61,7 @@ class FakeRepository:
         return user
 
     def crear_vuelo(self, datos):
-        flight = {"id": f"vuelo-{len(self.flights) + 1}", **datos}
+        flight = {"id": f"vuelo-{len(self.flights) + 1}", **datos, "version": 1, "activo": True}
         self.flights.append(flight)
         return flight
 
@@ -70,7 +72,7 @@ class FakeRepository:
         return self.tokens.get(token_id) == usuario_id
 
     def listar_vuelos(self, origen=None, destino=None, fecha=None):
-        vuelos = self.flights
+        vuelos = [vuelo for vuelo in self.flights if vuelo["activo"]]
         for campo, filtro in (("origen", origen), ("destino", destino), ("fecha", fecha)):
             if filtro:
                 vuelos = [vuelo for vuelo in vuelos if filtro.casefold() in vuelo[campo].casefold()]
@@ -78,12 +80,13 @@ class FakeRepository:
 
     def crear_reserva(self, usuario_id, vuelo_id, cantidad):
         with self._lock:
-            flight = next((item for item in self.flights if item["id"] == vuelo_id), None)
+            flight = next((item for item in self.flights if item["id"] == vuelo_id and item["activo"]), None)
             if flight is None:
                 raise ErrorAPI("vuelo_no_encontrado", "No se encontro el vuelo solicitado.", 404)
             if flight["asientos_disponibles"] < cantidad:
                 raise ErrorAPI("asientos_insuficientes", "No hay suficientes asientos disponibles.", 409)
             flight["asientos_disponibles"] -= cantidad
+            flight["version"] += 1
             reservation = {"id": f"reserva-{len(self.reservations) + 1}",
                            "usuario_id": usuario_id, "vuelo_id": vuelo_id,
                            "cantidad": cantidad, "estado": "activa",
@@ -103,13 +106,38 @@ class FakeRepository:
         return [item for item in self.reservations.values() if item["usuario_id"] == usuario_id]
 
     def cancelar_reserva(self, reserva_id, usuario_id):
-        reservation = self.obtener_reserva(reserva_id, usuario_id)
-        if reservation is None or reservation["estado"] != "activa":
-            return None
-        reservation["estado"] = "cancelada"
-        flight = next(item for item in self.flights if item["id"] == reservation["vuelo_id"])
-        flight["asientos_disponibles"] += reservation["cantidad"]
-        return reservation
+        with self._lock:
+            reservation = self.obtener_reserva(reserva_id, usuario_id)
+            if reservation is None or reservation["estado"] != "activa":
+                return None
+            reservation["estado"] = "cancelada"
+            flight = next(item for item in self.flights if item["id"] == reservation["vuelo_id"])
+            flight["asientos_disponibles"] += reservation["cantidad"]
+            flight["version"] += 1
+            return reservation
+
+    def _vuelo_vigente(self, vuelo_id, version):
+        flight = next((v for v in self.flights if v["id"] == vuelo_id and v["activo"]), None)
+        if flight is None:
+            raise ErrorAPI("vuelo_no_encontrado", "No se encontro el vuelo solicitado.", 404)
+        if flight["version"] != version:
+            raise ErrorAPI("vuelo_modificado", "El vuelo cambio. Actualiza la lista.", 409)
+        return flight
+
+    def modificar_vuelo(self, vuelo_id, datos, version):
+        with self._lock:
+            flight = self._vuelo_vigente(vuelo_id, version)
+            flight.update(datos)
+            flight["version"] += 1
+            return flight
+
+    def eliminar_vuelo(self, vuelo_id, version):
+        with self._lock:
+            flight = self._vuelo_vigente(vuelo_id, version)
+            if any(r["vuelo_id"] == vuelo_id and r["estado"] == "activa" for r in self.reservations.values()):
+                raise ErrorAPI("vuelo_con_reservas", "No se puede eliminar un vuelo con asientos reservados.", 409)
+            flight.update(activo=False, version=version + 1)
+            return flight
 
 
 @pytest.fixture

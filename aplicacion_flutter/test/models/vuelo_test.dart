@@ -2,6 +2,18 @@ import 'package:aplicacion_flutter/models/vuelo.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('Vuelo conserva version optimista recibida del servidor', () {
+    final vuelo = Vuelo.fromJson({
+      'id': 'v1',
+      'origen': 'Quito, Ecuador',
+      'destino': 'Lima, Peru',
+      'fecha': '2030-01-01',
+      'precio': 12,
+      'asientos_disponibles': 0,
+      'version': 7,
+    });
+    expect((vuelo as dynamic).version, 7);
+  });
   test('Vuelo.fromJson convierte campos numéricos y fechas del API', () {
     final vuelo = Vuelo.fromJson({
       'id': 'vuelo-7',
@@ -19,6 +31,7 @@ void main() {
     expect(vuelo.destino, 'Guayaquil');
     expect(vuelo.precio, 89.0);
     expect(vuelo.asientosDisponibles, 4);
+    expect((vuelo as dynamic).version, 1);
   });
 
   test('Vuelo.fromJson acepta identificadores UUID de PostgreSQL', () {

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../models/reserva.dart';
+import '../models/vuelo.dart';
 import '../services/api_service.dart';
+import '../theme/aerotech_theme.dart';
+import '../utils/formateador_xml.dart';
 import 'vuelos_page.dart';
 
 class ReservasPage extends StatefulWidget {
@@ -15,6 +18,7 @@ class ReservasPage extends StatefulWidget {
 
 class _ReservasPageState extends State<ReservasPage> {
   List<Reserva> _reservas = [];
+  Map<String, Vuelo> _vuelos = {};
   bool _cargando = true;
   String? _error;
 
@@ -32,7 +36,22 @@ class _ReservasPageState extends State<ReservasPage> {
     try {
       final reservas = await widget.apiService.obtenerReservas();
       if (!mounted) return;
-      setState(() => _reservas = reservas);
+      setState(() {
+        _reservas = reservas;
+        _cargando = false;
+      });
+      if (reservas.any((reserva) => reserva.vuelo == null)) {
+        // El catálogo complementa la presentación, nunca la reserva o sus acciones.
+        try {
+          final vuelos = await widget.apiService.buscarVuelos();
+          if (!mounted) return;
+          setState(
+            () => _vuelos = {for (final vuelo in vuelos) vuelo.id: vuelo},
+          );
+        } catch (_) {
+          // Las reservas siguen disponibles si el catálogo no responde.
+        }
+      }
     } on ExcepcionApi catch (error) {
       if (!mounted) return;
       setState(() => _error = error.mensaje);
@@ -90,10 +109,27 @@ class _ReservasPageState extends State<ReservasPage> {
       await showDialog<void>(
         context: context,
         builder: (context) => AlertDialog(
+          constraints: const BoxConstraints(maxWidth: 460),
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 24,
+          ),
+          scrollable: true,
           title: const Text('Comprobante XML'),
           content: ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 360),
-            child: SingleChildScrollView(child: SelectableText(xml)),
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(context).height * 0.55,
+            ),
+            child: SingleChildScrollView(
+              child: SelectableText(
+                formatearXml(xml),
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 13,
+                  height: 1.6,
+                ),
+              ),
+            ),
           ),
           actions: [
             TextButton(
@@ -122,6 +158,7 @@ class _ReservasPageState extends State<ReservasPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AerotechTheme.background,
       appBar: AppBar(title: const Text('Mis reservas')),
       body: _contenido(),
       bottomNavigationBar: NavigationBar(
@@ -170,46 +207,91 @@ class _ReservasPageState extends State<ReservasPage> {
       onRefresh: _cargarReservas,
       child: ListView.builder(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
         itemCount: _reservas.length,
-        itemBuilder: (context, indice) => _tarjetaReserva(_reservas[indice]),
+        itemBuilder: (context, indice) => Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1080),
+            child: _tarjetaReserva(_reservas[indice]),
+          ),
+        ),
       ),
     );
   }
 
   Widget _tarjetaReserva(Reserva reserva) {
-    final vuelo = reserva.vuelo;
+    final vuelo = reserva.vuelo ?? _vuelos[reserva.vueloId];
     return Card(
-      child: ListTile(
-        leading: const CircleAvatar(
-          child: Icon(Icons.confirmation_num_outlined),
-        ),
-        title: Text(
-          vuelo == null
-              ? 'Vuelo #${reserva.vueloId}'
-              : '${vuelo.origen} → ${vuelo.destino}',
-        ),
-        subtitle: Text(
-          'Reserva #${reserva.id} · ${reserva.estado}\n'
-          '${reserva.cantidad} pasajero(s)\n'
-          'Subtotal: \$${reserva.subtotal.toStringAsFixed(2)} · '
-          'IVA (${reserva.porcentajeIva.toStringAsFixed(0)}%): '
-          '\$${reserva.iva.toStringAsFixed(2)}\n'
-          'Total: \$${reserva.total.toStringAsFixed(2)}',
-        ),
-        isThreeLine: true,
-        trailing: Wrap(
-          spacing: 0,
+      color: AerotechTheme.surface,
+      shape: AerotechTheme.cardShape,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            IconButton(
-              tooltip: 'Ver comprobante XML',
-              onPressed: () => _verComprobanteXml(reserva),
-              icon: const Icon(Icons.description_outlined),
+            Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: AerotechTheme.cyan.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.confirmation_num_outlined,
+                    color: AerotechTheme.blue,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    vuelo == null
+                        ? 'Vuelo no disponible'
+                        : '${vuelo.origen} → ${vuelo.destino}',
+                    style: const TextStyle(
+                      color: AerotechTheme.navy,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
             ),
-            IconButton(
-              tooltip: 'Cancelar reserva',
-              onPressed: () => _cancelar(reserva),
-              icon: const Icon(Icons.cancel_outlined),
+            const SizedBox(height: 12),
+            Text(
+              'Reserva #${reserva.id} · ${reserva.estado}\n'
+              '${reserva.cantidad} pasajero(s)\n'
+              'Subtotal: \$${reserva.subtotal.toStringAsFixed(2)} · '
+              'IVA (${reserva.porcentajeIva.toStringAsFixed(0)}%): '
+              '\$${reserva.iva.toStringAsFixed(2)}\n'
+              'Total: \$${reserva.total.toStringAsFixed(2)}',
+              style: const TextStyle(
+                color: AerotechTheme.textSecondary,
+                height: 1.55,
+              ),
+            ),
+            const Divider(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                IconButton(
+                  tooltip: 'Ver comprobante XML',
+                  onPressed: () => _verComprobanteXml(reserva),
+                  icon: const Icon(Icons.description_outlined),
+                  color: AerotechTheme.blue,
+                ),
+                const SizedBox(width: 8),
+                IconButton.filledTonal(
+                  tooltip: 'Cancelar reserva',
+                  onPressed: () => _cancelar(reserva),
+                  icon: const Icon(Icons.cancel_outlined),
+                  style: IconButton.styleFrom(
+                    foregroundColor: AerotechTheme.navy,
+                    backgroundColor: AerotechTheme.cyan.withValues(alpha: 0.16),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

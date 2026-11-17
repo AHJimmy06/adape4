@@ -52,6 +52,37 @@ class RepositorioSupabase:
             raise RuntimeError("La creacion de vuelo no devolvio datos.")
         return vuelo
 
+    def _mutar_vuelo(self, funcion: str, vuelo_id: str, version: int, datos=None) -> dict[str, Any]:
+        from uuid import UUID
+        try:
+            identificador = str(UUID(vuelo_id))
+        except (ValueError, TypeError, AttributeError) as error:
+            raise ErrorAPI("vuelo_no_encontrado", "No se encontro el vuelo solicitado.", 404) from error
+        parametros = {"p_vuelo_id": identificador, "p_version": version}
+        if datos is not None:
+            parametros["p_datos"] = datos
+        try:
+            respuesta = self.cliente.rpc(funcion, parametros).execute()
+        except Exception as error:
+            mensaje = str(error).upper()
+            if "VUELO_MODIFICADO" in mensaje:
+                raise ErrorAPI("vuelo_modificado", "El vuelo cambio mientras lo editabas. Actualiza la lista e intenta de nuevo.", 409) from error
+            if "VUELO_CON_RESERVAS" in mensaje:
+                raise ErrorAPI("vuelo_con_reservas", "No se puede eliminar un vuelo con asientos reservados.", 409) from error
+            if "VUELO_INEXISTENTE" in mensaje:
+                raise ErrorAPI("vuelo_no_encontrado", "No se encontro el vuelo solicitado.", 404) from error
+            raise
+        vuelo = self._primero(respuesta)
+        if vuelo is None:
+            raise RuntimeError("La operacion de vuelo no devolvio datos.")
+        return vuelo
+
+    def modificar_vuelo(self, vuelo_id: str, datos: dict[str, Any], version: int) -> dict[str, Any]:
+        return self._mutar_vuelo("modificar_vuelo", vuelo_id, version, datos)
+
+    def eliminar_vuelo(self, vuelo_id: str, version: int) -> dict[str, Any]:
+        return self._mutar_vuelo("eliminar_vuelo", vuelo_id, version)
+
     def crear_token(self, usuario_id: str, token_id: str, expira_en: str) -> None:
         self.cliente.table("tokens").insert({"id": token_id, "usuario_id": usuario_id, "expira_en": expira_en}).execute()
 
@@ -63,7 +94,7 @@ class RepositorioSupabase:
 
     def listar_vuelos(self, origen: str | None = None, destino: str | None = None,
                      fecha: str | None = None) -> list[dict[str, Any]]:
-        consulta = self.cliente.table("vuelos").select("*")
+        consulta = self.cliente.table("vuelos").select("*").eq("activo", True)
         if origen:
             consulta = consulta.ilike("origen", f"%{origen}%")
         if destino:

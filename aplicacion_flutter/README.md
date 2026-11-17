@@ -1,32 +1,37 @@
-# Cliente Flutter para reservas de vuelos
+# AeroTech — cliente Flutter
 
-Aplicación Flutter en español que se comunica exclusivamente con la API REST Flask. La sesión mantiene el JWT solo en memoria; al cerrar la aplicación será necesario iniciar sesión otra vez.
+Frontend en español con landing, modelos 3D locales, autenticación y reservas. La API se ejecuta en Render y PostgreSQL en Supabase; para usar la aplicación no hace falta iniciar el backend local.
 
-## Configurar la URL de la API
+## Iniciar el frontend
 
-El cliente usa `http://10.0.2.2:5000` de forma predeterminada, dirección que permite al emulador Android acceder al puerto 5000 del equipo anfitrión. Para elegir otra dirección, pásala al ejecutar Flutter:
+Desde esta carpeta, con Flutter instalado:
 
 ```powershell
 flutter pub get
-flutter run --dart-define=API_BASE_URL=http://10.0.2.2:5000
+flutter run -d chrome --dart-define=API_BASE_URL=https://adape4-reservas-vuelos-api.onrender.com
 ```
 
-En Chrome u otro navegador local, normalmente se usa `http://localhost:5000`. En un dispositivo físico, usa la dirección IP local del equipo donde se ejecuta Flask y asegúrate de que ambos estén en la misma red. El HTTP local está permitido solo en la variante Android debug; en release configura la URL HTTPS de la API publicada. No incluyas contraseñas ni claves en `API_BASE_URL`.
+`API_BASE_URL` configura la API al compilar. Sin ese parámetro, el código conserva `http://10.0.2.2:5000` para desarrollo Android con backend local. No contiene credenciales de Supabase ni claves administrativas. La sesión JWT permanece únicamente en memoria.
 
 ## Funciones
 
-- Crear una cuenta e iniciar sesión.
-- Buscar vuelos por origen y destino.
-- Reservar un asiento y consultar las reservas de la sesión autenticada.
-- Cancelar una reserva con confirmación.
+- Landing adaptable antes del login; el globo reutiliza los recursos 3D del proyecto. Con movimiento reducido se muestra el mismo modelo sin rotación automática.
+- Registro y login con controles en tiempo real y errores dentro del formulario.
+- Consulta de vuelos, reservas para varios pasajeros según disponibilidad, cancelación y comprobante XML.
+- La selección numerada de la cabina es una preferencia visual; se persiste la cantidad, no una asignación real de asientos.
+- ADMIN: crear, modificar y eliminar vuelos, además de promover usuarios registrados.
+- La edición y eliminación envían la versión consultada. Si una reserva u otro administrador cambia el vuelo, se muestra un conflicto y se actualizan los datos antes de continuar.
+- No se puede eliminar un vuelo con reservas activas. La eliminación es lógica para conservar el historial de reservas canceladas.
 
-## Contrato REST consumido
+## Validaciones de vuelos
 
-- `POST /api/usuarios/registro`: `{nombre, correo, contrasena}`.
-- `POST /api/auth/login`: `{correo, contrasena}`; responde `{mensaje, token, usuario: {id, nombre, correo}}`.
-- `GET /api/vuelos`: acepta filtros opcionales `origen`, `destino` y `fecha`; cada vuelo contiene identificador UUID como texto, `origen`, `destino`, `fecha`, `hora_salida`, `hora_llegada`, `precio` y `asientos_disponibles`.
-- `POST /api/reservas`: `{vuelo_id, cantidad}`; responde `{mensaje, reserva_id, total, estado}`. La identidad del pasajero se deriva del JWT y el cliente no envía `usuario_id`.
-- `GET /api/reservas`: devuelve la lista de reservas del usuario autenticado.
-- `DELETE /api/reservas/<id>`: cancela la reserva indicada.
+Origen/destino usan `Ciudad, País`. Fecha posterior a hoy en Ecuador mediante calendario; llegada posterior a salida en la misma fecha. Precio con máximo dos decimales, sin letras; asientos enteros. Un vuelo agotado admite edición con cero asientos restantes. El backend vuelve a validar todas las reglas y los permisos.
 
-El token JWT se envía como `Authorization: Bearer <token>` en las operaciones protegidas.
+## Pruebas
+
+```powershell
+flutter test --no-pub
+flutter analyze --no-pub
+```
+
+Detalles del contrato y concurrencia en `../docs/crud-vuelos.md` (en la entrega publicada, `../documentacion/crud-vuelos.md`).

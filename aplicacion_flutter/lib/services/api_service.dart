@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../models/reserva.dart';
+import '../models/usuario.dart';
 import '../models/vuelo.dart';
 
 class ApiService {
@@ -21,9 +22,19 @@ class ApiService {
   final Uri _urlBase;
   String? _token;
 
-  void establecerToken(String token) => _token = token;
+  Usuario? _usuarioActual;
+  Usuario? get usuarioActual => _usuarioActual;
+  bool get esAdministrador => _usuarioActual?.esAdministrador ?? false;
 
-  void cerrarSesion() => _token = null;
+  void establecerToken(String token) {
+    _token = token;
+    _usuarioActual = null;
+  }
+
+  void cerrarSesion() {
+    _token = null;
+    _usuarioActual = null;
+  }
 
   Future<Map<String, dynamic>> registrarUsuario({
     required String nombre,
@@ -51,8 +62,142 @@ class ApiService {
       throw const ExcepcionApi('La respuesta no incluyó un token de acceso.');
     }
     _token = token;
+    final usuario = respuesta['usuario'];
+    _usuarioActual = usuario is Map<String, dynamic>
+        ? Usuario.fromJson(usuario)
+        : null;
     return respuesta;
   }
+
+  Future<Usuario> obtenerPerfil() async {
+    final respuesta = await _enviarMapa(
+      'GET',
+      '/api/auth/perfil',
+      requiereToken: true,
+    );
+    final usuario = _leerUsuario(respuesta);
+    _usuarioActual = usuario;
+    return usuario;
+  }
+
+  Future<List<Usuario>> listarUsuarios() async {
+    final respuesta = await _cliente.get(
+      _url('/api/admin/usuarios'),
+      headers: _encabezados(requiereToken: true),
+    );
+    final datos = _decodificar(respuesta);
+    final lista = datos is List
+        ? datos
+        : datos is Map
+        ? datos['usuarios']
+        : null;
+    if (lista is! List) {
+      throw const ExcepcionApi(
+        'La respuesta de usuarios no tiene un formato válido.',
+      );
+    }
+    return lista
+        .map((item) => Usuario.fromJson(Map<String, dynamic>.from(item as Map)))
+        .toList();
+  }
+
+  Future<Usuario> promoverUsuario(String id) async {
+    final datos = await _enviarMapa(
+      'POST',
+      '/api/admin/usuarios/${Uri.encodeComponent(id)}/promover',
+      requiereToken: true,
+    );
+    final usuario = _leerUsuario(datos);
+    if (_usuarioActual?.id == usuario.id) _usuarioActual = usuario;
+    return usuario;
+  }
+
+  Usuario _leerUsuario(Map<String, dynamic> datos) {
+    final usuario = datos['usuario'];
+    if (usuario is! Map<String, dynamic>) {
+      throw const ExcepcionApi(
+        'La respuesta de usuario no tiene un formato válido.',
+      );
+    }
+    return Usuario.fromJson(usuario);
+  }
+
+  Future<Vuelo> crearVuelo({
+    required String origen,
+    required String destino,
+    required String fecha,
+    required String horaSalida,
+    required String horaLlegada,
+    required double precio,
+    required int asientosDisponibles,
+  }) async {
+    final datos = await _enviarMapa(
+      'POST',
+      '/api/vuelos',
+      requiereToken: true,
+      cuerpo: {
+        'origen': origen,
+        'destino': destino,
+        'fecha': fecha,
+        'hora_salida': horaSalida,
+        'hora_llegada': horaLlegada,
+        'precio': precio,
+        'asientos_disponibles': asientosDisponibles,
+      },
+    );
+    final vuelo = datos['vuelo'];
+    if (vuelo is! Map<String, dynamic>) {
+      throw const ExcepcionApi(
+        'La respuesta de vuelo no tiene un formato válido.',
+      );
+    }
+    return Vuelo.fromJson(vuelo);
+  }
+
+  Future<Vuelo> actualizarVuelo({
+    required String id,
+    required int version,
+    required String origen,
+    required String destino,
+    required String fecha,
+    required String horaSalida,
+    required String horaLlegada,
+    required double precio,
+    required int asientosDisponibles,
+  }) async {
+    final datos = await _enviarMapa(
+      'PUT',
+      '/api/vuelos/${Uri.encodeComponent(id)}',
+      requiereToken: true,
+      cuerpo: {
+        'version': version,
+        'origen': origen,
+        'destino': destino,
+        'fecha': fecha,
+        'hora_salida': horaSalida,
+        'hora_llegada': horaLlegada,
+        'precio': precio,
+        'asientos_disponibles': asientosDisponibles,
+      },
+    );
+    final vuelo = datos['vuelo'];
+    if (vuelo is! Map<String, dynamic>) {
+      throw const ExcepcionApi(
+        'La respuesta de vuelo no tiene un formato válido.',
+      );
+    }
+    return Vuelo.fromJson(vuelo);
+  }
+
+  Future<Map<String, dynamic>> eliminarVuelo(
+    String id, {
+    required int version,
+  }) => _enviarMapa(
+    'DELETE',
+    '/api/vuelos/${Uri.encodeComponent(id)}',
+    requiereToken: true,
+    cuerpo: {'version': version},
+  );
 
   Future<List<Vuelo>> buscarVuelos({
     String? origen,
@@ -186,7 +331,14 @@ class ApiService {
       final mensaje = detalle is Map<String, dynamic>
           ? detalle['mensaje'] ?? detalle['codigo']
           : detalle ?? mapa['mensaje'] ?? 'Error ${respuesta.statusCode}';
-      throw ExcepcionApi(mensaje.toString(), codigo: respuesta.statusCode);
+      throw ExcepcionApi(
+        mensaje.toString(),
+        codigo: respuesta.statusCode,
+        codigoError:
+            detalle is Map<String, dynamic> && detalle['codigo'] is String
+            ? detalle['codigo'] as String
+            : null,
+      );
     }
     return datos;
   }
@@ -213,10 +365,11 @@ class ApiService {
 }
 
 class ExcepcionApi implements Exception {
-  const ExcepcionApi(this.mensaje, {this.codigo});
+  const ExcepcionApi(this.mensaje, {this.codigo, this.codigoError});
 
   final String mensaje;
   final int? codigo;
+  final String? codigoError;
 
   @override
   String toString() => mensaje;

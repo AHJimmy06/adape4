@@ -8,6 +8,7 @@ class Vuelo {
     required this.horaLlegada,
     required this.precio,
     required this.asientosDisponibles,
+    this.version = 1,
   });
 
   final String id;
@@ -18,6 +19,7 @@ class Vuelo {
   final String horaLlegada;
   final double precio;
   final int asientosDisponibles;
+  final int version;
 
   factory Vuelo.fromJson(Map<String, dynamic> json) {
     return Vuelo(
@@ -29,6 +31,7 @@ class Vuelo {
       horaLlegada: json['hora_llegada'] as String? ?? '',
       precio: (json['precio'] as num).toDouble(),
       asientosDisponibles: (json['asientos_disponibles'] as num).toInt(),
+      version: (json['version'] as num?)?.toInt() ?? 1,
     );
   }
 }

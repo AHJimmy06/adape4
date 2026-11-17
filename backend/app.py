@@ -11,7 +11,7 @@ from flask import Flask, Response, g, jsonify, request
 from backend.models import ErrorAPI, reserva_publica, usuario_publico
 from backend.repository import RepositorioSupabase
 from backend.services import (ServicioAutenticacion, validar_filtros_vuelos,
-                              validar_login, validar_registro, validar_reserva, validar_vuelo)
+                              validar_login, validar_registro, validar_reserva, validar_vuelo, validar_version_vuelo)
 
 def create_app(repository=None, jwt_secret=None):
     load_dotenv(Path(__file__).with_name('.env'))
@@ -29,7 +29,7 @@ def create_app(repository=None, jwt_secret=None):
         if origen and (es_local or origen in origenes_cors):
             respuesta.headers["Access-Control-Allow-Origin"] = origen
             if request.method == "OPTIONS":
-                respuesta.headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
+                respuesta.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
                 respuesta.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
                 respuesta.headers["Access-Control-Max-Age"] = "600"
         return respuesta
@@ -112,6 +112,21 @@ def create_app(repository=None, jwt_secret=None):
     def crear_vuelo():
         vuelo = repository.crear_vuelo(validar_vuelo(request.get_json(silent=True)))
         return jsonify({"vuelo": vuelo}), 201
+
+    @app.route("/api/vuelos/<vuelo_id>", methods=["PUT"])
+    @requiere_administrador
+    def modificar_vuelo(vuelo_id):
+        datos = request.get_json(silent=True)
+        version = validar_version_vuelo(datos)
+        vuelo = repository.modificar_vuelo(vuelo_id, validar_vuelo(datos, permitir_agotado=True), version)
+        return jsonify({"vuelo": vuelo}), 200
+
+    @app.route("/api/vuelos/<vuelo_id>", methods=["DELETE"])
+    @requiere_administrador
+    def eliminar_vuelo(vuelo_id):
+        version = validar_version_vuelo(request.get_json(silent=True))
+        repository.eliminar_vuelo(vuelo_id, version)
+        return jsonify({"mensaje": "Vuelo eliminado correctamente."}), 200
 
     @app.route("/api/usuarios/registro", methods=["POST"])
     def registrar_usuario():

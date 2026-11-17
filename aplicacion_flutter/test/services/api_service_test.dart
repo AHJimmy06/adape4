@@ -6,7 +6,207 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
+  test(
+    'editar y eliminar vuelo envian version y autorizacion sin reintentos',
+    () async {
+      final requests = <http.Request>[];
+      final api = ApiService(
+        client: MockClient((request) async {
+          requests.add(request);
+          expect(request.url.path, '/api/vuelos/v1');
+          expect(request.headers['authorization'], 'Bearer admin');
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          expect(body['version'], 4);
+          if (request.method == 'PUT') {
+            expect(body['asientos_disponibles'], 0);
+            expect(body['origen'], 'Quito, Ecuador');
+            return http.Response(
+              jsonEncode({
+                'vuelo': {...body, 'id': 'v1', 'version': 5},
+              }),
+              200,
+            );
+          }
+          expect(request.method, 'DELETE');
+          expect(body, {'version': 4});
+          return http.Response(
+            jsonEncode({'mensaje': 'Vuelo eliminado.'}),
+            200,
+          );
+        }),
+      )..establecerToken('admin');
+      final dynamic dynamicApi = api;
+      final dynamic flight = await dynamicApi.actualizarVuelo(
+        id: 'v1',
+        version: 4,
+        origen: 'Quito, Ecuador',
+        destino: 'Lima, Peru',
+        fecha: '2030-01-01',
+        horaSalida: '09:00',
+        horaLlegada: '11:00',
+        precio: 50.0,
+        asientosDisponibles: 0,
+      );
+      expect(flight.version, 5);
+      final result = await dynamicApi.eliminarVuelo('v1', version: 4);
+      expect(result['mensaje'], 'Vuelo eliminado.');
+      expect(requests, hasLength(2));
+    },
+  );
+  test('conserva codigo de error sin cambiar estado HTTP ni mensaje', () async {
+    for (final codigoError in ['asientos_insuficientes', 'correo_registrado']) {
+      final api = ApiService(
+        client: MockClient(
+          (_) async => http.Response(
+            jsonEncode({
+              'error': {'codigo': codigoError, 'mensaje': 'Conflicto'},
+            }),
+            409,
+          ),
+        ),
+      );
+      api.establecerToken('test');
+      try {
+        await api.reservarVuelo(vueloId: 'v1');
+        fail('Debía fallar');
+      } on ExcepcionApi catch (error) {
+        expect(error.codigo, 409);
+        expect(error.mensaje, 'Conflicto');
+        expect((error as dynamic).codigoError, codigoError);
+      }
+    }
+  });
   const baseUrl = 'http://localhost:5000';
+
+  test('roles, perfil, promoción y vuelos usan contratos protegidos', () async {
+    var role = 'ADMIN';
+    final client = MockClient((request) async {
+      final user = {
+        'id': 'u1',
+        'nombre': 'Ana',
+        'correo': 'a@b.c',
+        'rol': role,
+      };
+      if (request.url.path == '/api/auth/login') {
+        return http.Response(
+          jsonEncode({'token': 'jwt', 'usuario': user}),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      }
+      expect(request.headers['authorization'], 'Bearer jwt');
+      if (request.url.path == '/api/auth/perfil') {
+        expect(request.method, 'GET');
+        return http.Response(jsonEncode({'usuario': user}), 200);
+      }
+      if (request.url.path == '/api/admin/usuarios') {
+        expect(request.method, 'GET');
+        return http.Response(
+          jsonEncode({
+            'usuarios': [user],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      }
+      if (request.url.path.endsWith('/promover')) {
+        expect(request.method, 'POST');
+        expect(request.url.path, '/api/admin/usuarios/u2/promover');
+        expect(request.body, isEmpty);
+        return http.Response(
+          jsonEncode({
+            'usuario': {...user, 'id': 'u2', 'rol': 'ADMIN'},
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      }
+      expect(request.url.path, '/api/vuelos');
+      expect(request.method, 'POST');
+      final flight = jsonDecode(request.body) as Map<String, dynamic>;
+      expect(flight, {
+        'origen': 'Quito, Ecuador',
+        'destino': 'Lima, Perú',
+        'fecha': '2026-12-01',
+        'hora_salida': '09:00',
+        'hora_llegada': '11:00',
+        'precio': 99.5,
+        'asientos_disponibles': 20,
+      });
+      return http.Response(
+        jsonEncode({
+          'vuelo': {...flight, 'id': 'v1'},
+        }),
+        201,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    });
+    final api = ApiService(client: client, baseUrl: Uri.parse(baseUrl));
+    await api.iniciarSesion(correo: 'a@b.c', contrasena: 'secret');
+    expect(api.esAdministrador, isTrue);
+    expect(api.usuarioActual!.id, 'u1');
+    expect((await api.listarUsuarios()).single.rol, 'ADMIN');
+    expect((await api.promoverUsuario('u2')).rol, 'ADMIN');
+    expect(
+      (await api.crearVuelo(
+        origen: 'Quito, Ecuador',
+        destino: 'Lima, Perú',
+        fecha: '2026-12-01',
+        horaSalida: '09:00',
+        horaLlegada: '11:00',
+        precio: 99.5,
+        asientosDisponibles: 20,
+      )).id,
+      'v1',
+    );
+    role = 'USER';
+    await api.obtenerPerfil();
+    expect(api.esAdministrador, isFalse);
+    api.cerrarSesion();
+    expect(api.usuarioActual, isNull);
+    expect(api.esAdministrador, isFalse);
+    await expectLater(api.obtenerPerfil(), throwsA(isA<ExcepcionApi>()));
+    role = 'ADMIN';
+    await api.iniciarSesion(correo: 'a@b.c', contrasena: 'secret');
+    api.establecerToken('replacement');
+    expect(api.esAdministrador, isFalse);
+    expect(api.usuarioActual, isNull);
+  });
+
+  test('login sin rol queda USER y errores 403/409 se conservan', () async {
+    var status = 403;
+    final client = MockClient((request) async {
+      if (request.url.path == '/api/auth/login') {
+        return http.Response(
+          jsonEncode({
+            'token': 'jwt',
+            'usuario': {'id': 'u', 'nombre': 'Ana', 'correo': 'a@b.c'},
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      }
+      return http.Response(
+        jsonEncode({
+          'error': {'mensaje': 'Operación rechazada'},
+        }),
+        status,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    });
+    final api = ApiService(client: client, baseUrl: Uri.parse(baseUrl));
+    await api.iniciarSesion(correo: 'a@b.c', contrasena: 'secret');
+    expect(api.usuarioActual!.rol, 'USER');
+    await expectLater(
+      api.listarUsuarios(),
+      throwsA(isA<ExcepcionApi>().having((e) => e.codigo, 'codigo', 403)),
+    );
+    status = 409;
+    await expectLater(
+      api.promoverUsuario('u2'),
+      throwsA(isA<ExcepcionApi>().having((e) => e.codigo, 'codigo', 409)),
+    );
+  });
 
   test('buscarVuelos envía los filtros y analiza la respuesta JSON', () async {
     final cliente = MockClient((solicitud) async {

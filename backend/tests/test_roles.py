@@ -1,5 +1,6 @@
 """Public-interface coverage of role authorization and additive migrations."""
 from pathlib import Path
+from datetime import datetime, timedelta, timezone
 
 import jwt
 import pytest
@@ -8,7 +9,8 @@ from backend.tests.test_api import api, auth, login, registrar, token_para
 
 
 FLIGHT = {"origen": "Quito, Ecuador", "destino": "Lima, Peru",
-          "fecha": "2026-12-10", "hora_salida": "23:30", "hora_llegada": "01:15",
+          "fecha": (datetime.now(timezone(timedelta(hours=-5))).date() + timedelta(days=2)).isoformat(),
+          "hora_salida": "09:30", "hora_llegada": "11:15",
           "precio": 50.25, "asientos_disponibles": 20}
 SECRET = "secreto-de-prueba-largo-para-pruebas"
 
@@ -86,7 +88,7 @@ def test_admin_creates_flight_without_affecting_existing_flights(api):
     assert flight["id"] != "injected"
     assert all(flight[key] == value for key, value in FLIGHT.items())
     assert repo.flights[:2] == original
-    assert client.get("/api/vuelos?origen=Quito&destino=Lima&fecha=2026-12-10").json == [flight]
+    assert client.get(f"/api/vuelos?origen=Quito&destino=Lima&fecha={FLIGHT['fecha']}").json == [flight]
 
 
 @pytest.mark.parametrize("field,value", [
@@ -136,3 +138,26 @@ def test_admin_cannot_promote_self_using_alternate_uuid_spelling(api, variant):
     response = client.post(f"/api/admin/usuarios/{target}/promover", headers=auth(token))
     assert response.status_code == 400
     assert repo.users["ana@example.com"]["rol"] == "ADMIN"
+
+
+@pytest.mark.parametrize("dias", [-1, 0])
+def test_admin_rejects_today_and_past_without_mutation(api, dias):
+    client, repo = api
+    token = admin_token(client, repo)
+    fecha = (datetime.now(timezone(timedelta(hours=-5))).date() + timedelta(days=dias)).isoformat()
+    before = [dict(flight) for flight in repo.flights]
+    response = client.post("/api/vuelos", headers=auth(token), json={**FLIGHT, "fecha": fecha})
+    assert response.status_code == 400
+    assert response.json["error"]["codigo"] == "fecha_invalida"
+    assert repo.flights == before
+
+
+@pytest.mark.parametrize("salida,llegada", [("10:00", "10:00"), ("11:00", "10:00"), ("23:30", "01:15"), ("10:00:30", "10:00:29")])
+def test_admin_rejects_arrival_not_after_departure_without_mutation(api, salida, llegada):
+    client, repo = api
+    token = admin_token(client, repo)
+    before = [dict(flight) for flight in repo.flights]
+    response = client.post("/api/vuelos", headers=auth(token), json={**FLIGHT, "hora_salida": salida, "hora_llegada": llegada})
+    assert response.status_code == 400
+    assert response.json["error"]["codigo"] == "hora_invalida"
+    assert repo.flights == before

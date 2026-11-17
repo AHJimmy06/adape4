@@ -93,7 +93,7 @@ class ServicioAutenticacion:
 
 
 
-def validar_vuelo(datos: Any) -> dict[str, Any]:
+def validar_vuelo(datos: Any, *, permitir_agotado: bool = False) -> dict[str, Any]:
     if not isinstance(datos, dict):
         raise ErrorAPI("datos_invalidos", "Se requiere un objeto JSON.", 400)
     vuelo = {}
@@ -109,9 +109,12 @@ def validar_vuelo(datos: Any) -> dict[str, Any]:
     try:
         if not isinstance(fecha, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", fecha):
             raise ValueError
-        date.fromisoformat(fecha)
+        fecha_vuelo = date.fromisoformat(fecha)
     except ValueError as error:
         raise ErrorAPI("fecha_invalida", "La fecha debe usar el formato AAAA-MM-DD.", 400) from error
+    hoy_ecuador = datetime.now(timezone(timedelta(hours=-5))).date()
+    if fecha_vuelo <= hoy_ecuador:
+        raise ErrorAPI("fecha_invalida", "La fecha del vuelo debe ser posterior a hoy.", 400)
     vuelo["fecha"] = fecha
     for campo in ("hora_salida", "hora_llegada"):
         valor = datos.get(campo)
@@ -122,6 +125,8 @@ def validar_vuelo(datos: Any) -> dict[str, Any]:
         except ValueError as error:
             raise ErrorAPI("hora_invalida", "Las horas deben usar HH:MM o HH:MM:SS.", 400) from error
         vuelo[campo] = valor
+    if time.fromisoformat(vuelo["hora_llegada"]) <= time.fromisoformat(vuelo["hora_salida"]):
+        raise ErrorAPI("hora_invalida", "La llegada debe ser posterior a la salida en la misma fecha.", 400)
     precio = datos.get("precio")
     try:
         if isinstance(precio, bool) or not isinstance(precio, (int, float, str)):
@@ -133,7 +138,16 @@ def validar_vuelo(datos: Any) -> dict[str, Any]:
         raise ErrorAPI("precio_invalido", "El precio debe ser no negativo y tener como maximo dos decimales.", 400) from error
     vuelo["precio"] = float(importe)
     asientos = datos.get("asientos_disponibles")
-    if isinstance(asientos, bool) or not isinstance(asientos, int) or not 1 <= asientos <= 2147483647:
+    if isinstance(asientos, bool) or not isinstance(asientos, int) or not (0 if permitir_agotado else 1) <= asientos <= 2147483647:
         raise ErrorAPI("asientos_invalidos", "Los asientos deben ser un entero positivo.", 400)
     vuelo["asientos_disponibles"] = asientos
     return vuelo
+
+
+def validar_version_vuelo(datos: Any) -> int:
+    if not isinstance(datos, dict):
+        raise ErrorAPI("datos_invalidos", "Se requiere un objeto JSON.", 400)
+    version = datos.get("version")
+    if isinstance(version, bool) or not isinstance(version, int) or not 1 <= version <= 2147483647:
+        raise ErrorAPI("version_invalida", "Se requiere la version vigente del vuelo como entero positivo.", 400)
+    return version
