@@ -1,6 +1,7 @@
 """Reglas de autenticacion y validacion compartidas por las rutas."""
 import re
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import uuid4
 
@@ -83,7 +84,56 @@ class ServicioAutenticacion:
             usuario_id, token_id = identidad.get("sub"), identidad.get("jti")
             if not usuario_id or not token_id or not self.repositorio.token_esta_activo(usuario_id, token_id):
                 raise ErrorAPI("token_invalido", "El token no es valido o ha expirado.", 401)
-            return {"id": usuario_id}
+            usuario = self.repositorio.buscar_usuario_por_id(usuario_id)
+            if not usuario:
+                raise ErrorAPI("token_invalido", "El token no es valido o ha expirado.", 401)
+            return usuario
         except jwt.PyJWTError as error:
             raise ErrorAPI("token_invalido", "El token no es valido o ha expirado.", 401) from error
 
+
+
+def validar_vuelo(datos: Any) -> dict[str, Any]:
+    if not isinstance(datos, dict):
+        raise ErrorAPI("datos_invalidos", "Se requiere un objeto JSON.", 400)
+    vuelo = {}
+    for campo in ("origen", "destino"):
+        valor = datos.get(campo)
+        partes = valor.split(",") if isinstance(valor, str) else []
+        if len(partes) != 2 or not all(parte.strip() for parte in partes) or len(valor) > 240:
+            raise ErrorAPI("ruta_invalida", "Origen y destino deben usar Ciudad, Pais.", 400)
+        vuelo[campo] = ", ".join(parte.strip() for parte in partes)
+    if vuelo["origen"].casefold() == vuelo["destino"].casefold():
+        raise ErrorAPI("ruta_invalida", "Origen y destino deben ser distintos.", 400)
+    fecha = datos.get("fecha")
+    try:
+        if not isinstance(fecha, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", fecha):
+            raise ValueError
+        date.fromisoformat(fecha)
+    except ValueError as error:
+        raise ErrorAPI("fecha_invalida", "La fecha debe usar el formato AAAA-MM-DD.", 400) from error
+    vuelo["fecha"] = fecha
+    for campo in ("hora_salida", "hora_llegada"):
+        valor = datos.get(campo)
+        try:
+            if not isinstance(valor, str) or not re.fullmatch(r"[0-9]{2}:[0-9]{2}(?::[0-9]{2})?", valor):
+                raise ValueError
+            time.fromisoformat(valor)
+        except ValueError as error:
+            raise ErrorAPI("hora_invalida", "Las horas deben usar HH:MM o HH:MM:SS.", 400) from error
+        vuelo[campo] = valor
+    precio = datos.get("precio")
+    try:
+        if isinstance(precio, bool) or not isinstance(precio, (int, float, str)):
+            raise ValueError
+        importe = Decimal(str(precio))
+        if not importe.is_finite() or not 0 <= importe <= Decimal("99999999.99") or importe != importe.quantize(Decimal("0.01")):
+            raise ValueError
+    except (ValueError, InvalidOperation) as error:
+        raise ErrorAPI("precio_invalido", "El precio debe ser no negativo y tener como maximo dos decimales.", 400) from error
+    vuelo["precio"] = float(importe)
+    asientos = datos.get("asientos_disponibles")
+    if isinstance(asientos, bool) or not isinstance(asientos, int) or not 1 <= asientos <= 2147483647:
+        raise ErrorAPI("asientos_invalidos", "Los asientos deben ser un entero positivo.", 400)
+    vuelo["asientos_disponibles"] = asientos
+    return vuelo

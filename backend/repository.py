@@ -19,7 +19,7 @@ class RepositorioSupabase:
 
     def registrar_usuario(self, nombre: str, correo: str, password_hash: str) -> dict[str, Any]:
         try:
-            respuesta = self.cliente.table("usuarios").insert({"nombre": nombre, "correo": correo, "password_hash": password_hash}).execute()
+            respuesta = self.cliente.table("usuarios").insert({"nombre": nombre, "correo": correo, "password_hash": password_hash, "rol": "USER"}).execute()
         except Exception as error:
             if "23505" in str(error) or "unique" in str(error).lower():
                 raise ValueError("correo duplicado") from error
@@ -31,8 +31,26 @@ class RepositorioSupabase:
 
     def buscar_usuario_por_id(self, usuario_id: str) -> dict[str, Any] | None:
         return self._primero(
-            self.cliente.table("usuarios").select("id,nombre").eq("id", usuario_id).limit(1).execute()
+            self.cliente.table("usuarios").select("id,nombre,correo,rol").eq("id", usuario_id).limit(1).execute()
         )
+
+    def listar_usuarios(self) -> list[dict[str, Any]]:
+        return self.cliente.table("usuarios").select("id,nombre,correo,rol").order("creado_en").execute().data or []
+
+    def promover_usuario(self, usuario_id: str) -> dict[str, Any] | None:
+        from uuid import UUID
+        try:
+            UUID(usuario_id)
+        except ValueError:
+            return None
+        return self._primero(self.cliente.table("usuarios").update({"rol": "ADMIN"})
+                             .eq("id", usuario_id).execute())
+
+    def crear_vuelo(self, datos: dict[str, Any]) -> dict[str, Any]:
+        vuelo = self._primero(self.cliente.table("vuelos").insert(datos).execute())
+        if vuelo is None:
+            raise RuntimeError("La creacion de vuelo no devolvio datos.")
+        return vuelo
 
     def crear_token(self, usuario_id: str, token_id: str, expira_en: str) -> None:
         self.cliente.table("tokens").insert({"id": token_id, "usuario_id": usuario_id, "expira_en": expira_en}).execute()
@@ -85,6 +103,3 @@ class RepositorioSupabase:
                 return None
             raise
         return self._primero(respuesta)
-
-
-

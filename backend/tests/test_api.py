@@ -39,7 +39,7 @@ class FakeRepository:
         if correo in self.users:
             raise ValueError("correo duplicado")
         user = {"id": f"usuario-{len(self.users) + 1}", "nombre": nombre,
-                "correo": correo, "password_hash": password_hash}
+                "correo": correo, "password_hash": password_hash, "rol": "USER"}
         self.users[correo] = user
         return user
 
@@ -48,6 +48,20 @@ class FakeRepository:
 
     def buscar_usuario_por_id(self, usuario_id):
         return next((user for user in self.users.values() if user["id"] == usuario_id), None)
+
+    def listar_usuarios(self):
+        return list(self.users.values())
+
+    def promover_usuario(self, usuario_id):
+        user = self.buscar_usuario_por_id(usuario_id)
+        if user:
+            user["rol"] = "ADMIN"
+        return user
+
+    def crear_vuelo(self, datos):
+        flight = {"id": f"vuelo-{len(self.flights) + 1}", **datos}
+        self.flights.append(flight)
+        return flight
 
     def crear_token(self, usuario_id, token_id, expira_en):
         self.tokens[token_id] = usuario_id
@@ -134,7 +148,7 @@ def test_registro_valida_datos_y_no_expone_hash(api):
 
     response = registrar(client)
     assert response.status_code == 201
-    assert response.get_json()["usuario"] == {"id": "usuario-1", "nombre": "Ana", "correo": "ana@example.com"}
+    assert response.get_json()["usuario"] == {"id": "usuario-1", "nombre": "Ana", "correo": "ana@example.com", "rol": "USER"}
     assert response.get_json()["mensaje"]
     assert "password_hash" not in response.get_json()["usuario"]
     assert repo.users["ana@example.com"]["password_hash"] != "ClaveSegura123"

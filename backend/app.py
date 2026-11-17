@@ -4,13 +4,14 @@ import re
 import xml.etree.ElementTree as ET
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
+from uuid import UUID
 from dotenv import load_dotenv
 from functools import wraps
 from flask import Flask, Response, g, jsonify, request
 from backend.models import ErrorAPI, reserva_publica, usuario_publico
 from backend.repository import RepositorioSupabase
 from backend.services import (ServicioAutenticacion, validar_filtros_vuelos,
-                              validar_login, validar_registro, validar_reserva)
+                              validar_login, validar_registro, validar_reserva, validar_vuelo)
 
 def create_app(repository=None, jwt_secret=None):
     load_dotenv(Path(__file__).with_name('.env'))
@@ -72,6 +73,45 @@ def create_app(repository=None, jwt_secret=None):
             g.usuario = auth.autenticar(token)
             return funcion(*args, **kwargs)
         return protegida
+
+    def requiere_administrador(funcion):
+        @requiere_autenticacion
+        @wraps(funcion)
+        def protegida(*args, **kwargs):
+            if g.usuario.get("rol") != "ADMIN":
+                raise ErrorAPI("acceso_denegado", "Se requiere el rol ADMIN.", 403)
+            return funcion(*args, **kwargs)
+        return protegida
+
+    @app.route("/api/auth/perfil", methods=["GET"])
+    @requiere_autenticacion
+    def obtener_perfil():
+        return jsonify({"usuario": usuario_publico(g.usuario)}), 200
+
+    @app.route("/api/admin/usuarios", methods=["GET"])
+    @requiere_administrador
+    def listar_usuarios():
+        return jsonify([usuario_publico(usuario) for usuario in repository.listar_usuarios()]), 200
+
+    @app.route("/api/admin/usuarios/<usuario_id>/promover", methods=["POST"])
+    @requiere_administrador
+    def promover_usuario(usuario_id):
+        try:
+            es_propio = UUID(usuario_id) == UUID(str(g.usuario["id"]))
+        except ValueError:
+            es_propio = usuario_id == str(g.usuario["id"])
+        if es_propio:
+            raise ErrorAPI("promocion_invalida", "Solo puedes promover a otro usuario registrado.", 400)
+        usuario = repository.promover_usuario(usuario_id)
+        if usuario is None:
+            raise ErrorAPI("usuario_no_encontrado", "No se encontro el usuario solicitado.", 404)
+        return jsonify({"usuario": usuario_publico(usuario)}), 200
+
+    @app.route("/api/vuelos", methods=["POST"])
+    @requiere_administrador
+    def crear_vuelo():
+        vuelo = repository.crear_vuelo(validar_vuelo(request.get_json(silent=True)))
+        return jsonify({"vuelo": vuelo}), 201
 
     @app.route("/api/usuarios/registro", methods=["POST"])
     def registrar_usuario():
@@ -164,6 +204,3 @@ def _importe_xml(valor):
 if __name__ == "__main__":
     application = create_app()
     application.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=False)
-
-
-

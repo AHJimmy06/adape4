@@ -6,6 +6,7 @@ create table if not exists public.usuarios (
     nombre text not null check (length(trim(nombre)) between 1 and 120),
     correo text not null unique,
     password_hash text not null,
+    rol text not null default 'USER' constraint usuarios_rol_check check (rol in ('ADMIN', 'USER')),
     creado_en timestamptz not null default now()
 );
 
@@ -15,7 +16,7 @@ create table if not exists public.vuelos (
     destino text not null,
     fecha date not null,
     hora_salida time not null,
-    hora_llegada time, 
+    hora_llegada time,
     precio numeric(10, 2) not null check (precio >= 0),
     asientos_disponibles integer not null check (asientos_disponibles >= 0),
     creado_en timestamptz not null default now(),
@@ -157,6 +158,3 @@ revoke all on function public.reservar_vuelo(uuid, uuid, integer) from public, a
 revoke all on function public.cancelar_reserva(uuid, uuid) from public, anon, authenticated;
 grant execute on function public.reservar_vuelo(uuid, uuid, integer) to service_role;
 grant execute on function public.cancelar_reserva(uuid, uuid) to service_role;
-
-
-
