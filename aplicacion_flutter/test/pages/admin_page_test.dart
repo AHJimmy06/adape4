@@ -277,7 +277,7 @@ void main() {
     await open(tester, api);
     await tapVisible(tester, find.byKey(const ValueKey('delete-flight-v1')));
     await tapVisible(tester, find.text('Eliminar vuelo'));
-    expect(find.text('No se puede eliminar este vuelo'), findsOneWidget);
+    expect(find.text('Vuelo con reservas'), findsOneWidget);
     expect(api.searches, 1);
     await tapVisible(tester, find.text('Aceptar'));
     expect(api.searches, 2);

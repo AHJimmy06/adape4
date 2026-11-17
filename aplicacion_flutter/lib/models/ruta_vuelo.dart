@@ -2,7 +2,27 @@
 typedef GeoPoint = (double latitude, double longitude);
 
 class RutaVuelo {
-  RutaVuelo(this.origen, this.destino);
+  RutaVuelo(this.origen, this.destino)
+    : _origenAeropuerto = null,
+      _destinoAeropuerto = null;
+  RutaVuelo.desdeAeropuertos(
+    Map<String, dynamic> origen,
+    Map<String, dynamic> destino,
+  ) : origen = '${origen['ciudad']}, ${origen['pais']}',
+      destino = '${destino['ciudad']}, ${destino['pais']}',
+      _origenAeropuerto = origen,
+      _destinoAeropuerto = destino;
+  final Map<String, dynamic>? _origenAeropuerto, _destinoAeropuerto;
+  GeoPoint? _coordenadas(Map<String, dynamic>? airport) {
+    if (airport?['latitud'] is! num || airport?['longitud'] is! num) {
+      return null;
+    }
+    return (
+      (airport!['latitud'] as num).toDouble(),
+      (airport['longitud'] as num).toDouble(),
+    );
+  }
+
   final String origen;
   final String destino;
 
@@ -81,11 +101,15 @@ class RutaVuelo {
 
   String? get paisOrigen => _pais(origen);
   String? get paisDestino => _pais(destino);
-  bool get esNacional => paisOrigen != null && paisOrigen == paisDestino;
+  bool get esNacional => _origenAeropuerto != null
+      ? (_origenAeropuerto['codigo_pais'] == _destinoAeropuerto!['codigo_pais'])
+      : paisOrigen != null && paisOrigen == paisDestino;
   bool get esInternacional =>
       paisOrigen != null && paisDestino != null && !esNacional;
-  GeoPoint? get centroOrigen => paises[clavePais(paisOrigen)];
-  GeoPoint? get centroDestino => paises[clavePais(paisDestino)];
+  GeoPoint? get centroOrigen =>
+      _coordenadas(_origenAeropuerto) ?? paises[clavePais(paisOrigen)];
+  GeoPoint? get centroDestino =>
+      _coordenadas(_destinoAeropuerto) ?? paises[clavePais(paisDestino)];
   GeoPoint? _punto(String value, String? country) {
     final entry = ciudades[ciudad(value).toLowerCase()];
     return entry != null && clavePais(entry.$1) == clavePais(country)
@@ -93,6 +117,8 @@ class RutaVuelo {
         : null;
   }
 
-  GeoPoint? get puntoOrigen => _punto(origen, paisOrigen);
-  GeoPoint? get puntoDestino => _punto(destino, paisDestino);
+  GeoPoint? get puntoOrigen =>
+      _coordenadas(_origenAeropuerto) ?? _punto(origen, paisOrigen);
+  GeoPoint? get puntoDestino =>
+      _coordenadas(_destinoAeropuerto) ?? _punto(destino, paisDestino);
 }

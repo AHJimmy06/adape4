@@ -216,61 +216,34 @@ def test_consulta_vuelos_aplica_filtros_de_origen_destino_y_fecha(api):
 def test_reserva_se_asocia_al_usuario_autenticado_y_rechaza_cantidad_invalida(api):
     client, repo = api
     token = token_para(client)
-    response = client.post("/api/reservas", json={"vuelo_id": "vuelo-1", "cantidad": 1}, headers=auth(token))
-    assert response.status_code == 201
-    data = response.get_json()
-    assert data["reserva_id"] == "reserva-1"
-    assert data["subtotal"] == 50.0
-    assert data["iva"] == 7.5
-    assert data["total"] == 57.5
-    assert data["estado"] == "activa" and data["mensaje"]
-    assert repo.reservations["reserva-1"]["usuario_id"] == repo.users["ana@example.com"]["id"]
-    reservas_antes = dict(repo.reservations)
-    asientos_antes = repo.flights[0]["asientos_disponibles"]
-    assert client.post("/api/reservas", json={"vuelo_id": "vuelo-1", "cantidad": True}, headers=auth(token)).status_code == 400
-    assert repo.reservations == reservas_antes
-    assert repo.flights[0]["asientos_disponibles"] == asientos_antes
+    before = repo.flights[0]['asientos_disponibles']
+    response = client.post('/api/reservas', json={'vuelo_id':'vuelo-1','cantidad':1}, headers=auth(token))
+    assert response.status_code == 410
+    assert response.json['error']['codigo'] == 'flujo_retirado'
+    assert repo.flights[0]['asientos_disponibles'] == before and not repo.reservations
 
 
 def test_rpc_atomico_no_sobrevende_asientos(api):
-    client, _ = api
+    client, repo = api
     token = token_para(client)
-    barrier = threading.Barrier(3)
-    responses = []
-
-    def reservar():
-        barrier.wait()
-        responses.append(client.post("/api/reservas", json={"vuelo_id": "vuelo-1", "cantidad": 2}, headers=auth(token)))
-
-    workers = [threading.Thread(target=reservar) for _ in range(2)]
-    for worker in workers:
-        worker.start()
-    barrier.wait()
-    for worker in workers:
-        worker.join()
-
-    assert sorted(response.status_code for response in responses) == [201, 409]
+    # The retired endpoint must never provide a free bypass around Stripe.
+    for _ in range(2):
+        assert client.post('/api/reservas', json={'vuelo_id':'vuelo-1','cantidad':2}, headers=auth(token)).status_code == 410
+    assert not repo.reservations and repo.flights[0]['asientos_disponibles'] == 2
 
 
 def test_usuario_solo_puede_consultar_y_cancelar_su_reserva(api):
     client, repo = api
     token_ana = token_para(client)
-    token_beto = token_para(client, correo="beto@example.com")
-    created = client.post("/api/reservas", json={"vuelo_id": "vuelo-1", "cantidad": 1}, headers=auth(token_ana))
-    reservation_id = created.get_json()["reserva_id"]
-
-    own_reservations = client.get("/api/reservas", headers=auth(token_ana))
-    assert own_reservations.status_code == 200
-    assert own_reservations.get_json()[0]["subtotal"] == 50.0
-    assert own_reservations.get_json()[0]["iva"] == 7.5
-    assert own_reservations.get_json()[0]["total"] == 57.5
-
-    assert client.get(f"/api/reservas/{reservation_id}", headers=auth(token_beto)).status_code == 404
-    assert client.delete(f"/api/reservas/{reservation_id}", headers=auth(token_beto)).status_code == 404
-    assert client.get("/api/reservas", headers=auth(token_beto)).get_json() == []
-    assert client.delete(f"/api/reservas/{reservation_id}", headers=auth(token_ana)).status_code == 200
-    assert client.get(f"/api/reservas/{reservation_id}", headers=auth(token_ana)).get_json()["reserva"]["estado"] == "cancelada"
-    assert repo.flights[0]["asientos_disponibles"] == 2
+    token_beto = token_para(client, correo='beto@example.com')
+    seeded = repo.crear_reserva(repo.users['ana@example.com']['id'], 'vuelo-1', 1)
+    reservation_id = seeded['id']
+    own = client.get('/api/reservas', headers=auth(token_ana))
+    assert own.status_code == 200 and own.json[0]['total'] == 57.5
+    assert client.get(f'/api/reservas/{reservation_id}', headers=auth(token_beto)).status_code == 404
+    assert client.get('/api/reservas', headers=auth(token_beto)).json == []
+    assert client.delete(f'/api/reservas/{reservation_id}', headers=auth(token_ana)).status_code == 410
+    assert repo.reservations[reservation_id]['estado'] == 'activa'
 
 
 def test_comprobante_xml_es_protegido_valido_y_solo_del_propietario(api):
@@ -278,8 +251,8 @@ def test_comprobante_xml_es_protegido_valido_y_solo_del_propietario(api):
     token_ana = token_para(client)
     token_beto = token_para(client, correo="beto@example.com")
     repo.users["ana@example.com"]["nombre"] = "Ana & <Ríos>"
-    created = client.post("/api/reservas", json={"vuelo_id": "vuelo-1", "cantidad": 1}, headers=auth(token_ana))
-    reserva_id = created.get_json()["reserva_id"]
+    seeded = repo.crear_reserva(repo.users["ana@example.com"]["id"], "vuelo-1", 1)
+    reserva_id = seeded["id"]
     ruta = f"/api/reservas/{reserva_id}/comprobante.xml"
     reserva_antes = dict(repo.reservations[reserva_id])
     asientos_antes = repo.flights[0]["asientos_disponibles"]
@@ -301,15 +274,9 @@ def test_comprobante_xml_es_protegido_valido_y_solo_del_propietario(api):
 
 
 def test_calculo_iva_redondea_importes_a_dos_decimales(api):
-    client, repo = api
-    token = token_para(client)
-    repo.flights[0]["precio"] = 0.10
-    response = client.post("/api/reservas", json={"vuelo_id": "vuelo-1", "cantidad": 1}, headers=auth(token))
-
-    assert response.status_code == 201
-    assert response.get_json()["subtotal"] == 0.10
-    assert response.get_json()["iva"] == 0.02
-    assert response.get_json()["total"] == 0.12
+    from backend.sistema_validacion import allocate_vat
+    seats = allocate_vat([{'codigo':'1A','subtotal_centavos':51}])
+    assert seats == [{'codigo':'1A','subtotal_centavos':51,'iva_centavos':8,'total_centavos':59}]
 
 
 

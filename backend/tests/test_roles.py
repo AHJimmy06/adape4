@@ -83,12 +83,8 @@ def test_admin_creates_flight_without_affecting_existing_flights(api):
     token = admin_token(client, repo)
     original = [dict(flight) for flight in repo.flights]
     response = client.post("/api/vuelos", headers=auth(token), json={**FLIGHT, "id": "injected"})
-    assert response.status_code == 201
-    flight = response.json["vuelo"]
-    assert flight["id"] != "injected"
-    assert all(flight[key] == value for key, value in FLIGHT.items())
-    assert repo.flights[:2] == original
-    assert client.get(f"/api/vuelos?origen=Quito&destino=Lima&fecha={FLIGHT['fecha']}").json == [flight]
+    assert response.status_code == 410
+    assert repo.flights == original
 
 
 @pytest.mark.parametrize("field,value", [
@@ -103,15 +99,15 @@ def test_invalid_flight_is_not_persisted(api, field, value):
     token = admin_token(client, repo)
     before = [dict(flight) for flight in repo.flights]
     response = client.post("/api/vuelos", headers=auth(token), json={**FLIGHT, field: value})
-    assert response.status_code == 400
+    assert response.status_code == 410
     assert repo.flights == before
 
 
 def test_role_sql_is_additive_transactional_and_bootstrap_is_exact():
     root = Path(__file__).resolve().parents[2]
-    migration = (root / "database/migrations/002_roles.sql").read_text().lower()
-    bootstrap = (root / "database/migrations/003_admin_inicial.sql").read_text().lower()
-    schema = (root / "database/schema.sql").read_text().lower()
+    migration = (root / "database/migrations/002_roles.sql").read_text(encoding='utf-8').lower()
+    bootstrap = (root / "database/migrations/003_admin_inicial.sql").read_text(encoding='utf-8').lower()
+    schema = (root / "database/schema.sql").read_text(encoding='utf-8').lower()
     assert "begin;" in migration and "commit;" in migration
     assert "add column if not exists rol" in migration
     assert "default 'user'" in migration and "'admin', 'user'" in migration
@@ -147,8 +143,8 @@ def test_admin_rejects_today_and_past_without_mutation(api, dias):
     fecha = (datetime.now(timezone(timedelta(hours=-5))).date() + timedelta(days=dias)).isoformat()
     before = [dict(flight) for flight in repo.flights]
     response = client.post("/api/vuelos", headers=auth(token), json={**FLIGHT, "fecha": fecha})
-    assert response.status_code == 400
-    assert response.json["error"]["codigo"] == "fecha_invalida"
+    assert response.status_code == 410
+    assert response.json["error"]["codigo"] == "flujo_retirado"
     assert repo.flights == before
 
 
@@ -158,6 +154,6 @@ def test_admin_rejects_arrival_not_after_departure_without_mutation(api, salida,
     token = admin_token(client, repo)
     before = [dict(flight) for flight in repo.flights]
     response = client.post("/api/vuelos", headers=auth(token), json={**FLIGHT, "hora_salida": salida, "hora_llegada": llegada})
-    assert response.status_code == 400
-    assert response.json["error"]["codigo"] == "hora_invalida"
+    assert response.status_code == 410
+    assert response.json["error"]["codigo"] == "flujo_retirado"
     assert repo.flights == before

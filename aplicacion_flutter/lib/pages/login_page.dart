@@ -5,7 +5,7 @@ import '../theme/aerotech_theme.dart';
 import '../validators/validaciones_autenticacion.dart';
 import '../widgets/globo_vuelos.dart';
 import 'registro_page.dart';
-import 'vuelos_page.dart';
+import 'sistema_vuelos_page.dart';
 
 class LoginPage extends StatefulWidget {
   LoginPage({super.key, ApiService? apiService, this.globoBuilder})
@@ -47,7 +47,7 @@ class _LoginPageState extends State<LoginPage> {
       if (!mounted) return;
       await Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(
-          builder: (_) => VuelosPage(apiService: widget.apiService),
+          builder: (_) => SistemaVuelosPage(apiService: widget.apiService),
         ),
       );
     } on ExcepcionApi catch (error) {
