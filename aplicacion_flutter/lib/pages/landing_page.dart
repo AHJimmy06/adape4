@@ -223,7 +223,14 @@ class _LandingPageState extends State<LandingPage> {
                         Expanded(
                           flex: 6,
                           child: Center(
-                            child: _mundo(maximo: math.min(980, alto - 150)),
+                            child: LayoutBuilder(
+                              builder: (context, espacio) => _mundo(
+                                maximo: math.min(
+                                  980,
+                                  math.min(espacio.maxWidth, espacio.maxHeight),
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       ],
@@ -353,6 +360,7 @@ class _LandingPageState extends State<LandingPage> {
                     if (i > 0) const SizedBox(width: 16),
                     Expanded(
                       child: TarjetaDestino(
+                        expandir: true,
                         key: ValueKey('landing-vuelo-${visibles[i]['id']}'),
                         vuelo: visibles[i],
                         onReservar: _navegando
@@ -572,7 +580,7 @@ class _LandingPageState extends State<LandingPage> {
                   widget.globoBuilder?.call(context) ??
                       GloboVuelos(
                         key: ValueKey('landing-globo-$movimientoReducido'),
-                        animar: !movimientoReducido,
+                        animar: true,
                         tamanoMaximo: maximo,
                         encuadre: 110,
                       ),

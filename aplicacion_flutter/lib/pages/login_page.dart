@@ -148,14 +148,14 @@ class _LoginPageState extends State<LoginPage> {
       height: escritorio ? alto - 36 : alto,
       margin: escritorio ? const EdgeInsets.all(18) : EdgeInsets.zero,
       padding: EdgeInsets.symmetric(
-        horizontal: escritorio ? 32 : 20,
+        horizontal: escritorio ? 12 : 20,
         vertical: escritorio ? 28 : 18,
       ),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFFEAF5F8), Color(0xFFF6FAFC), Color(0xFFEAF1F8)],
+          colors: [Color(0xFF07162F), Color(0xFF0D3653), Color(0xFF135D73)],
         ),
         borderRadius: BorderRadius.circular(escritorio ? 30 : 26),
         border: Border.all(color: const Color(0xFFDCEAF0)),
@@ -172,7 +172,7 @@ class _LoginPageState extends State<LoginPage> {
           Text(
             'Viaja a tu manera',
             style: TextStyle(
-              color: _ColoresLogin.azulNoche,
+              color: Colors.white,
               fontSize: escritorio ? 25 : 21,
               fontWeight: FontWeight.w700,
               letterSpacing: -0.3,
@@ -182,14 +182,16 @@ class _LoginPageState extends State<LoginPage> {
           Text(
             'Nuevos destinos te esperan',
             style: TextStyle(
-              color: _ColoresLogin.textoSuave,
+              color: Colors.white70,
               fontSize: escritorio ? 14 : 12,
             ),
           ),
           const SizedBox(height: 8),
           Expanded(
             child: Builder(
-              builder: widget.globoBuilder ?? (_) => const GloboVuelos(),
+              builder:
+                  widget.globoBuilder ??
+                  (_) => const GloboVuelos(tamanoMaximo: 900, encuadre: 110),
             ),
           ),
         ],

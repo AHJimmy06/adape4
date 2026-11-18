@@ -3,6 +3,10 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_3d_controller/flutter_3d_controller.dart';
+// El visor web declarativo evita depender del puente JS de los comandos.
+// La versión está fijada en pubspec.lock; la API pública no expone autoplay.
+// ignore: implementation_imports
+import 'package:flutter_3d_controller/src/core/modules/model_viewer/model_viewer.dart';
 
 class GloboVuelos extends StatefulWidget {
   const GloboVuelos({
@@ -54,7 +58,13 @@ class _GloboVuelosState extends State<GloboVuelos> {
         final maxWidth = constraints.maxWidth.isFinite
             ? constraints.maxWidth
             : 420.0;
-        final side = math.min(maxWidth, widget.tamanoMaximo);
+        final maxHeight = constraints.maxHeight.isFinite
+            ? constraints.maxHeight
+            : widget.tamanoMaximo;
+        final side = math.min(
+          math.min(maxWidth, maxHeight),
+          widget.tamanoMaximo,
+        );
 
         return Semantics(
           label: GloboVuelos.semanticLabel,
@@ -73,7 +83,27 @@ class _GloboVuelosState extends State<GloboVuelos> {
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
-                    if (!_errorDeCarga)
+                    if (!_errorDeCarga && kIsWeb)
+                      ModelViewer(
+                        src: _rutaModeloWeb,
+                        alt: GloboVuelos.semanticLabel,
+                        debugLogging: false,
+                        autoPlay: widget.animar,
+                        animationName: _nombreAnimacion,
+                        autoRotate: widget.animar,
+                        rotationPerSecond: '4deg',
+                        cameraOrbit: '28deg 70deg ${widget.encuadre}%',
+                        cameraControls: true,
+                        disableTap: true,
+                        interactionPrompt: InteractionPrompt.none,
+                        progressBarColor: Colors.transparent,
+                        backgroundColor: Colors.transparent,
+                        onLoad: (_) {
+                          if (mounted) setState(() => _modeloCargado = true);
+                        },
+                        onError: _alFallarCarga,
+                      ),
+                    if (!_errorDeCarga && !kIsWeb)
                       Flutter3DViewer(
                         key: const ValueKey('visor-globo-aerotech'),
                         src: kIsWeb ? _rutaModeloWeb : _rutaModeloNativa,
@@ -96,7 +126,7 @@ class _GloboVuelosState extends State<GloboVuelos> {
                         child: SizedBox.square(dimension: side),
                       ),
                     ),
-                    if (!_modeloCargado && !_errorDeCarga)
+                    if (!kIsWeb && !_modeloCargado && !_errorDeCarga)
                       const _CargandoModelo(),
                     if (_errorDeCarga) const _ErrorModelo(),
                   ],

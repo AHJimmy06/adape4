@@ -423,16 +423,38 @@ class _SistemaVuelosPageState extends State<SistemaVuelosPage> {
                   : 1;
               final ancho =
                   (constraints.maxWidth - (columnas - 1) * 20) / columnas;
-              return Wrap(
-                spacing: 20,
-                runSpacing: 20,
+              return Column(
                 children: [
-                  for (final v in _vuelos)
-                    SizedBox(
-                      width: ancho,
-                      child: TarjetaDestino(
-                        vuelo: v,
-                        onReservar: _busy ? null : () => _reservar(v),
+                  for (
+                    var inicio = 0;
+                    inicio < _vuelos.length;
+                    inicio += columnas
+                  )
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 20),
+                      child: IntrinsicHeight(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            for (
+                              var i = inicio;
+                              i < _vuelos.length && i < inicio + columnas;
+                              i++
+                            ) ...[
+                              if (i > inicio) const SizedBox(width: 20),
+                              SizedBox(
+                                width: ancho,
+                                child: TarjetaDestino(
+                                  expandir: true,
+                                  vuelo: _vuelos[i],
+                                  onReservar: _busy
+                                      ? null
+                                      : () => _reservar(_vuelos[i]),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
                     ),
                 ],

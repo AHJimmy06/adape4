@@ -5,10 +5,16 @@ import 'presentacion/dialogo_aerotech.dart';
 
 /// Tarjeta de una salida concreta. No inventa promociones ni descuentos.
 class TarjetaDestino extends StatelessWidget {
-  const TarjetaDestino({super.key, required this.vuelo, this.onReservar});
+  const TarjetaDestino({
+    super.key,
+    required this.vuelo,
+    this.onReservar,
+    this.expandir = false,
+  });
 
   final Map<String, dynamic> vuelo;
   final VoidCallback? onReservar;
+  final bool expandir;
 
   @override
   Widget build(BuildContext context) {
@@ -21,6 +27,99 @@ class TarjetaDestino extends StatelessWidget {
     final disponibles = vuelo['asientos_disponibles'] as num? ?? 0;
     final tarifas = vuelo['tarifas'] as List? ?? [];
     final internacional = origen['codigo_pais'] != destino['codigo_pais'];
+    final alturaFija = expandir;
+    final contenido = Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Desde ${origen['ciudad'] ?? origen['iata'] ?? ''}',
+            style: const TextStyle(color: AerotechTheme.textSecondary),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${destino['ciudad'] ?? ''} (${destino['iata'] ?? ''})',
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: AerotechTheme.navy,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            fechaLegible(
+              vuelo['salida_local'],
+              zona: origen['zona_horaria']?.toString(),
+            ),
+          ),
+          Text(
+            'Llegada: ${fechaLegible(vuelo['llegada_local'], zona: destino['zona_horaria']?.toString())}',
+            style: const TextStyle(
+              color: AerotechTheme.textSecondary,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              _etiqueta('Vuelo directo', Icons.near_me_outlined),
+              _etiqueta(
+                '${vuelo['codigo'] ?? ''}',
+                Icons.confirmation_number_outlined,
+              ),
+              if (vuelo['frecuencia'] == 'diaria')
+                _etiqueta('Ruta diaria', Icons.repeat),
+              for (final tarifa in tarifas)
+                _etiqueta(
+                  '${tarifa['clase_codigo']}',
+                  Icons.event_seat_outlined,
+                ),
+            ],
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Divider(height: 1),
+          ),
+          const Text(
+            'Precio desde · por pasajero',
+            style: TextStyle(color: AerotechTheme.textSecondary, fontSize: 12),
+          ),
+          Text(
+            'USD ${(total / 100).toStringAsFixed(2)}',
+            style: const TextStyle(
+              fontSize: 29,
+              fontWeight: FontWeight.w800,
+              color: AerotechTheme.navy,
+            ),
+          ),
+          Text(
+            'IVA incluido · $disponibles disponibles',
+            style: const TextStyle(
+              color: AerotechTheme.textSecondary,
+              fontSize: 12,
+            ),
+          ),
+          if (avion['modelo'] != null)
+            Text(
+              '${avion['modelo']} · ${avion['matricula'] ?? ''}',
+              style: const TextStyle(
+                fontSize: 12,
+                color: AerotechTheme.textSecondary,
+              ),
+            ),
+          if (alturaFija) const Spacer(),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: disponibles <= 0 ? null : onReservar,
+            icon: const Icon(Icons.airline_seat_recline_normal, size: 18),
+            label: const Text('Reservar'),
+          ),
+        ],
+      ),
+    );
     return Card(
       margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
@@ -79,99 +178,7 @@ class TarjetaDestino extends StatelessWidget {
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Desde ${origen['ciudad'] ?? origen['iata'] ?? ''}',
-                  style: const TextStyle(color: AerotechTheme.textSecondary),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${destino['ciudad'] ?? ''} (${destino['iata'] ?? ''})',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: AerotechTheme.navy,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  fechaLegible(
-                    vuelo['salida_local'],
-                    zona: origen['zona_horaria']?.toString(),
-                  ),
-                ),
-                Text(
-                  'Llegada: ${fechaLegible(vuelo['llegada_local'], zona: destino['zona_horaria']?.toString())}',
-                  style: const TextStyle(
-                    color: AerotechTheme.textSecondary,
-                    fontSize: 12,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    _etiqueta('Vuelo directo', Icons.near_me_outlined),
-                    _etiqueta(
-                      '${vuelo['codigo'] ?? ''}',
-                      Icons.confirmation_number_outlined,
-                    ),
-                    if (vuelo['frecuencia'] == 'diaria')
-                      _etiqueta('Ruta diaria', Icons.repeat),
-                    for (final tarifa in tarifas)
-                      _etiqueta(
-                        '${tarifa['clase_codigo']}',
-                        Icons.event_seat_outlined,
-                      ),
-                  ],
-                ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: Divider(height: 1),
-                ),
-                const Text(
-                  'Precio desde · por pasajero',
-                  style: TextStyle(
-                    color: AerotechTheme.textSecondary,
-                    fontSize: 12,
-                  ),
-                ),
-                Text(
-                  'USD ${(total / 100).toStringAsFixed(2)}',
-                  style: const TextStyle(
-                    fontSize: 29,
-                    fontWeight: FontWeight.w800,
-                    color: AerotechTheme.navy,
-                  ),
-                ),
-                Text(
-                  'IVA incluido · $disponibles disponibles',
-                  style: const TextStyle(
-                    color: AerotechTheme.textSecondary,
-                    fontSize: 12,
-                  ),
-                ),
-                if (avion['modelo'] != null)
-                  Text(
-                    '${avion['modelo']} · ${avion['matricula'] ?? ''}',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AerotechTheme.textSecondary,
-                    ),
-                  ),
-                const SizedBox(height: 16),
-                FilledButton.icon(
-                  onPressed: disponibles <= 0 ? null : onReservar,
-                  icon: const Icon(Icons.airline_seat_recline_normal, size: 18),
-                  label: const Text('Reservar'),
-                ),
-              ],
-            ),
-          ),
+          if (alturaFija) Expanded(child: contenido) else contenido,
         ],
       ),
     );
