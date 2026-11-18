@@ -84,8 +84,7 @@ class _StripeEmbebidoState extends State<StripeEmbebido> {
   @override
   Widget build(BuildContext context) => _error != null
       ? Padding(padding: const EdgeInsets.all(16), child: Text(_error!))
-      : SizedBox(
-          height: 660,
+      : SizedBox.expand(
           child: HtmlElementView(
             viewType: _id,
             onPlatformViewCreated: _created,

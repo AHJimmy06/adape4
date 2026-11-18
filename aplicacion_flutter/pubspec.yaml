@@ -65,6 +65,12 @@ flutter:
     - assets/models/aerotech_globo.glb
     - assets/textures/aerotech_mapa_mundi.png
     - assets/maps/paises_rutas.json
+    - assets/fonts/OFL.txt
+
+  fonts:
+    - family: AeroTechDisplay
+      fonts:
+        - asset: assets/fonts/DMSerifDisplay-Regular.ttf
 
 # flutter_3d_controller usa esta versión beta hasta que InAppWebView publique
 # una versión estable compatible con Android Gradle Plugin 9.

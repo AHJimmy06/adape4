@@ -41,7 +41,7 @@ def test_admin_creates_account_without_replacing_operator_session(api, role):
     user = response.json['usuario']
     assert user['nombre'] == 'Nueva Persona' and user['correo'] == 'nueva@example.com'
     assert user['rol'] == role
-    assert set(user) == {'id', 'nombre', 'correo', 'rol'}
+    assert set(user) == {'id', 'nombre', 'correo', 'rol', 'activo'}
     assert 'token' not in response.json and 'contrasena' not in response.get_data(as_text=True)
     assert check_password_hash(repo.users[user['correo']]['password_hash'], NEW_USER['contrasena'])
     assert client.get('/api/auth/perfil', headers=auth(token)).json['usuario']['correo'] == 'ana@example.com'

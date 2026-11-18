@@ -31,11 +31,11 @@ class RepositorioSupabase:
 
     def buscar_usuario_por_id(self, usuario_id: str) -> dict[str, Any] | None:
         return self._primero(
-            self.cliente.table("usuarios").select("id,nombre,correo,rol").eq("id", usuario_id).limit(1).execute()
+            self.cliente.table("usuarios").select("id,nombre,correo,rol,activo,version_acceso").eq("id", usuario_id).limit(1).execute()
         )
 
     def listar_usuarios(self) -> list[dict[str, Any]]:
-        return self.cliente.table("usuarios").select("id,nombre,correo,rol").order("creado_en").execute().data or []
+        return self.cliente.table("usuarios").select("id,nombre,correo,rol,activo").order("creado_en").execute().data or []
 
     def administrar_usuario(self, actor_id, accion, datos):
         try:
@@ -48,6 +48,7 @@ class RepositorioSupabase:
                 ("ADMIN_REQUERIDO", "acceso_denegado", "Se requiere el rol ADMIN vigente.", 403),
                 ("USUARIO_INEXISTENTE", "usuario_no_encontrado", "No se encontró el usuario solicitado.", 404),
                 ("AUTO_RETIRO", "auto_retiro", "No puedes retirar tu propio acceso ADMIN.", 400),
+                ("AUTO_DESACTIVACION", "auto_desactivacion", "No puedes desactivar tu propia cuenta.", 400),
                 ("ULTIMO_ADMIN", "ultimo_admin", "Debe permanecer al menos un administrador.", 409),
                 ("DATOS_USUARIO_INVALIDOS", "datos_invalidos", "Revisa los datos y el rol del usuario.", 400),
                 ("23505", "correo_registrado", "Ya existe una cuenta con ese correo.", 409),

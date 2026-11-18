@@ -158,12 +158,18 @@ def register_system(app, repository, authenticated, administrator, stripe_provid
         for key in ('origen_id', 'destino_id'):
             if key in request.args:
                 data[key] = identifier(request.args[key])
-        if 'fecha' in request.args:
+        if any(key in request.args for key in ('fecha', 'fecha_desde', 'fecha_hasta')):
             from datetime import date
             try:
-                data['fecha'] = date.fromisoformat(request.args['fecha']).isoformat()
+                for key in ('fecha', 'fecha_desde', 'fecha_hasta'):
+                    if key in request.args:
+                        data[key] = date.fromisoformat(request.args[key]).isoformat()
             except ValueError:
                 invalid('Fecha inválida.')
+            if ('fecha_desde' in data) != ('fecha_hasta' in data):
+                invalid('Selecciona el inicio y el fin del rango de fechas.')
+            if data.get('fecha_desde', '') > data.get('fecha_hasta', ''):
+                invalid('El inicio del rango no puede ser posterior al fin.')
         return jsonify(system.rpc('listar', **data))
 
     def catalog_write(resource, item_id=None):
@@ -190,8 +196,18 @@ def register_system(app, repository, authenticated, administrator, stripe_provid
                          administrator(changing), methods=['PUT', 'DELETE'])
 
     @app.get('/api/sistema/vuelos/<flight_id>/asientos')
-    @authenticated
     def seats(flight_id):
+        if not request.headers.get('Authorization'):
+            result = system.rpc('cabina', id=identifier(flight_id))
+            result['asientos'] = [{key: value for key, value in seat.items()
+                                   if key not in ('id', 'pedido_id', 'usuario_id')}
+                                  for seat in result['asientos']]
+            for seat in result['asientos']:
+                seat['es_mio'] = False
+            return jsonify(result)
+        return authenticated(authenticated_seats)(flight_id)
+
+    def authenticated_seats(flight_id):
         # Provider failures never turn an uncertain payment into a free seat.
         for pending in system.rpc('vencidos', g.usuario['id'], id=identifier(flight_id)):
             try:
@@ -199,6 +215,21 @@ def register_system(app, repository, authenticated, administrator, stripe_provid
             except ErrorAPI:
                 pass
         return jsonify(system.rpc('cabina', g.usuario['id'], id=identifier(flight_id)))
+
+    @app.get('/api/sistema/disponibilidad-aeropuerto')
+    @administrator
+    def airport_availability():
+        airport = identifier(request.args.get('aeropuerto_id'))
+        try:
+            arrival = datetime.fromisoformat(request.args.get('llegada_local', ''))
+            if arrival.tzinfo is not None or arrival.second or arrival.microsecond:
+                raise ValueError
+        except (ValueError, TypeError):
+            invalid('Selecciona una fecha y hora local de llegada válida.')
+        data = dict(aeropuerto_id=airport, llegada_local=arrival.isoformat(timespec='minutes'))
+        if request.args.get('vuelo_id'):
+            data['vuelo_id'] = identifier(request.args['vuelo_id'])
+        return jsonify(system.rpc('disponibilidad_aeropuerto', g.usuario['id'], **data))
 
     @app.post('/api/sistema/pedidos')
     @authenticated

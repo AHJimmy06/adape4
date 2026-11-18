@@ -129,6 +129,17 @@ def create_app(repository=None, jwt_secret=None, stripe_provider=None):
             raise ErrorAPI("usuario_no_encontrado", "No se encontro el usuario solicitado.", 404)
         return jsonify({"usuario": usuario_publico(usuario)}), 200
 
+    @app.route("/api/admin/usuarios/<usuario_id>/estado", methods=["PUT"])
+    @requiere_administrador
+    def cambiar_estado_usuario(usuario_id):
+        datos = request.get_json(silent=True)
+        if not isinstance(datos, dict) or type(datos.get("activo")) is not bool:
+            raise ErrorAPI("estado_invalido", "Selecciona un estado activo o inactivo válido.", 400)
+        usuario = repository.administrar_usuario(g.usuario["id"], "estado", {
+            "id": usuario_id, "activo": datos["activo"],
+        })
+        return jsonify({"usuario": usuario_publico(usuario)}), 200
+
     @app.route("/api/vuelos", methods=["POST"])
     @requiere_administrador
     def crear_vuelo():

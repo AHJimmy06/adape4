@@ -18,11 +18,13 @@ class FormularioOperacion extends StatefulWidget {
     required this.catalogos,
     required this.guardar,
     this.registro,
+    this.consultarDisponibilidad,
   });
   final String recurso;
   final Map<String, List<Registro>> catalogos;
   final Registro? registro;
   final Future<void> Function(Registro) guardar;
+  final Future<Registro> Function(Registro parametros)? consultarDisponibilidad;
   @override
   State<FormularioOperacion> createState() => _FormularioOperacionState();
 }
@@ -38,6 +40,10 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
   String _frecuencia = 'unico';
   String? _programacionSolicitud, _programacionClave;
   bool _guardando = false;
+  int _franja = 60, _consultaCapacidad = 0;
+  Registro? _capacidad;
+  String? _errorCapacidad;
+  bool _consultandoCapacidad = false;
   TextEditingController campo(String clave, [String inicial = '']) =>
       _campos.putIfAbsent(
         clave,
@@ -64,6 +70,10 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
   void initState() {
     super.initState();
     final r = widget.registro;
+    final franja = r?['franja_minutos'];
+    _franja = const [15, 30, 60, 120].contains(franja)
+        ? (franja as num).toInt()
+        : 60;
     _origen = r?['origen_id'];
     _destino = r?['destino_id'];
     _ruta = r?['ruta_id'] ?? r?['ruta']?['id'];
@@ -79,6 +89,54 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
       _precios[t['clase_codigo']] = TextEditingController(
         text: '${precio ~/ 100}.${(precio % 100).toString().padLeft(2, '0')}',
       );
+    }
+    if (widget.recurso == 'vuelos') {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _consultarCapacidad();
+      });
+    }
+  }
+
+  Future<void> _consultarCapacidad() async {
+    final consulta = ++_consultaCapacidad;
+    final destino = ruta?['destino']?['id'];
+    final llegada = _llegada;
+    if (widget.consultarDisponibilidad == null ||
+        destino == null ||
+        llegada == null) {
+      if (mounted) {
+        setState(() {
+          _capacidad = null;
+          _errorCapacidad = null;
+          _consultandoCapacidad = false;
+        });
+      }
+      return;
+    }
+    setState(() {
+      _capacidad = null;
+      _errorCapacidad = null;
+      _consultandoCapacidad = true;
+    });
+    try {
+      final datos = await widget.consultarDisponibilidad!({
+        'aeropuerto_id': destino,
+        'llegada_local': '${fecha(llegada)}T${hora(llegada)}',
+        if (widget.registro?['id'] != null) 'vuelo_id': widget.registro!['id'],
+      });
+      if (mounted && consulta == _consultaCapacidad) {
+        setState(() => _capacidad = datos);
+      }
+    } catch (_) {
+      if (mounted && consulta == _consultaCapacidad) {
+        setState(
+          () => _errorCapacidad = 'No se pudo consultar la capacidad del aeropuerto. Se validará al guardar.',
+        );
+      }
+    } finally {
+      if (mounted && consulta == _consultaCapacidad) {
+        setState(() => _consultandoCapacidad = false);
+      }
     }
   }
 
@@ -183,6 +241,49 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
           ? null
           : 'Usa exactamente 2 letras',
     ),
+    const _SeccionFormulario('Capacidad de aterrizajes', Icons.flight_land),
+    Wrap(
+      spacing: 16,
+      runSpacing: 12,
+      children: [
+        SizedBox(
+          width: 250,
+          child: texto(
+            'capacidad_aterrizajes',
+            'Aterrizajes por franja',
+            inicial: '10',
+            teclado: TextInputType.number,
+            formatos: [FilteringTextInputFormatter.digitsOnly],
+            validar: (v) =>
+                (int.tryParse(v ?? '') ?? 0) < 1 ||
+                    (int.tryParse(v ?? '') ?? 0) > 1000
+                ? 'Entre 1 y 1000 aterrizajes'
+                : null,
+          ),
+        ),
+        SizedBox(
+          width: 250,
+          child: DropdownButtonFormField<int>(
+            key: const ValueKey('franja_minutos'),
+            isExpanded: true,
+            initialValue: _franja,
+            decoration: const InputDecoration(
+              labelText: 'Duración de la franja',
+            ),
+            items: [
+              for (final n in [15, 30, 60, 120])
+                DropdownMenuItem(value: n, child: Text('$n minutos')),
+            ],
+            onChanged: _guardando
+                ? null
+                : (n) => setState(() => _franja = n ?? 60),
+          ),
+        ),
+      ],
+    ),
+    const Text(
+      'Límite de llegadas programadas dentro de cada franja local del aeropuerto.',
+    ),
     const _SeccionFormulario('Ubicación y zona horaria', Icons.public),
     texto(
       'latitud',
@@ -218,27 +319,50 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
     String clave,
     String etiqueta, {
     bool numero = false,
-  }) => Padding(
-    padding: const EdgeInsets.only(bottom: 12),
-    child: TextFormField(
-      controller: clase.campos[clave],
-      decoration: InputDecoration(labelText: etiqueta),
-      enabled: !_guardando,
-      keyboardType: numero ? TextInputType.number : TextInputType.text,
-      inputFormatters: numero
-          ? [FilteringTextInputFormatter.digitsOnly]
-          : clave == 'nombre'
-          ? null
-          : [_mayusculas],
-      onChanged: (_) => setState(() {}),
-      autovalidateMode: AutovalidateMode.onUserInteraction,
-      validator: (v) => numero
-          ? (int.tryParse(v ?? '') ?? 0) < 1
-                ? 'Debe ser mayor que cero'
-                : null
-          : ValidacionOperaciones.requerido(v),
+    double ancho = 100,
+  }) => SizedBox(
+    width: ancho,
+    child: Semantics(
+      label: etiqueta,
+      child: TextFormField(
+        controller: clase.campos[clave],
+        decoration: InputDecoration(
+          hintText: numero ? '1' : null,
+          isDense: true,
+          errorMaxLines: 2,
+        ),
+        enabled: !_guardando,
+        keyboardType: numero ? TextInputType.number : TextInputType.text,
+        inputFormatters: numero
+            ? [FilteringTextInputFormatter.digitsOnly]
+            : clave == 'nombre'
+            ? null
+            : [_mayusculas],
+        onChanged: (_) => setState(() {}),
+        autovalidateMode: AutovalidateMode.onUserInteraction,
+        validator: (v) => numero
+            ? (int.tryParse(v ?? '') ?? 0) < 1
+                  ? 'Mayor que cero'
+                  : null
+            : ValidacionOperaciones.requerido(v),
+      ),
     ),
   );
+
+  Widget tabla(List<String> titulos, List<DataRow> filas) =>
+      SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          horizontalMargin: 12,
+          columnSpacing: 16,
+          dataRowMinHeight: 78,
+          dataRowMaxHeight: 106,
+          headingRowColor: WidgetStateProperty.all(AerotechTheme.inputFill),
+          columns: [for (final t in titulos) DataColumn(label: Text(t))],
+          rows: filas,
+        ),
+      );
+
   List<Widget> aeronave() => [
     texto('matricula', 'Matrícula', mayusculas: true),
     texto('modelo', 'Modelo'),
@@ -247,51 +371,60 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
       Icons.event_seat_outlined,
     ),
     const Text(
-      'Las filas no se repiten entre clases. ABC|DEF representa dos grupos separados por un pasillo.',
+      'ABC|DEF representa grupos separados por un pasillo. Las filas no pueden repetirse entre clases.',
     ),
-    for (var i = 0; i < _clases.length; i++)
-      Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Expanded(child: Text('Clase ${i + 1}')),
-                  IconButton(
-                    tooltip: 'Quitar clase',
-                    onPressed: _guardando || _clases.length == 1
-                        ? null
-                        : () => setState(() {
-                            final c = _clases.removeAt(i);
-                            c.dispose();
-                          }),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
+    tabla(
+      ['Código', 'Clase', 'Primera fila', 'Filas', 'Columnas', 'Asientos', ''],
+      [
+        for (final clase in _clases)
+          DataRow(
+            key: ObjectKey(clase),
+            cells: [
+              DataCell(
+                campoClase(clase, 'codigo', 'Código de clase', ancho: 85),
               ),
-              campoClase(_clases[i], 'codigo', 'Código de clase'),
-              campoClase(_clases[i], 'nombre', 'Nombre de clase'),
-              campoClase(
-                _clases[i],
-                'fila_inicio',
-                'Primera fila',
-                numero: true,
+              DataCell(
+                campoClase(clase, 'nombre', 'Nombre de clase', ancho: 140),
               ),
-              campoClase(_clases[i], 'filas', 'Número de filas', numero: true),
-              campoClase(
-                _clases[i],
-                'columnas',
-                'Grupos de columnas (ABC|DEF)',
+              DataCell(
+                campoClase(
+                  clase,
+                  'fila_inicio',
+                  'Primera fila',
+                  numero: true,
+                  ancho: 70,
+                ),
               ),
-              Text(
-                'Capacidad de clase: ${ValidacionOperaciones.capacidad(_clases[i].datos)} asientos',
+              DataCell(
+                campoClase(
+                  clase,
+                  'filas',
+                  'Número de filas',
+                  numero: true,
+                  ancho: 70,
+                ),
+              ),
+              DataCell(
+                campoClase(clase, 'columnas', 'Grupos de columnas', ancho: 120),
+              ),
+              DataCell(Text('${ValidacionOperaciones.capacidad(clase.datos)}')),
+              DataCell(
+                IconButton(
+                  tooltip: 'Quitar clase',
+                  onPressed: _guardando || _clases.length == 1
+                      ? null
+                      : () => setState(() {
+                          _clases.remove(clase);
+                          clase.dispose();
+                        }),
+                  icon: const Icon(Icons.close),
+                ),
               ),
             ],
           ),
-        ),
-      ),
+      ],
+    ),
+    const SizedBox(height: 12),
     Text(
       'Capacidad total: ${_clases.fold<int>(0, (s, c) => s + ValidacionOperaciones.capacidad(c.datos))} asientos',
       style: const TextStyle(fontWeight: FontWeight.bold),
@@ -304,6 +437,63 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
       label: const Text('Agregar clase'),
     ),
   ];
+
+  Widget _tarifa(Registro clase) => SizedBox(
+    width: 180,
+    child: TextFormField(
+      key: ValueKey('tarifa_${clase['codigo']}'),
+      controller: _precios.putIfAbsent(
+        clase['codigo'],
+        () => TextEditingController(),
+      ),
+      decoration: InputDecoration(
+        hintText: 'USD 0.50',
+        isDense: true,
+        errorMaxLines: 2,
+        semanticCounterText: 'Tarifa base USD ${clase['nombre']}',
+      ),
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      enabled: !_guardando,
+      inputFormatters: [
+        TextInputFormatter.withFunction(
+          (oldValue, newValue) =>
+              RegExp(r'^\d{0,7}(\.\d{0,2})?$').hasMatch(newValue.text)
+              ? newValue
+              : oldValue,
+        ),
+      ],
+      autovalidateMode: AutovalidateMode.onUserInteraction,
+      validator: (v) => ValidacionOperaciones.centavos(v ?? '') == null
+          ? 'USD 0.50 o más, dos decimales'
+          : null,
+    ),
+  );
+
+  Widget _panelCapacidad() {
+    if (_consultandoCapacidad) {
+      return const Padding(
+        padding: EdgeInsets.all(12),
+        child: LinearProgressIndicator(),
+      );
+    }
+    if (_errorCapacidad != null) {
+      return PanelMensaje(_errorCapacidad!, error: true);
+    }
+    if (_capacidad == null) {
+      return const Text(
+        'Elige la ruta y la llegada para consultar los cupos del aeropuerto.',
+      );
+    }
+    final restantes = (_capacidad!['disponibles'] as num?)?.toInt() ?? 0;
+    return PanelMensaje(
+      '$restantes aterrizajes disponibles en esta franja de ${_capacidad!['franja_minutos']} minutos. '
+      '${_capacidad!['programados']} programados / ${_capacidad!['capacidad_aterrizajes']} permitidos. '
+      '${_capacidad!['inicio_local']} — ${_capacidad!['fin_local']}. '
+      'La disponibilidad se vuelve a validar al guardar.',
+      error: restantes <= 0,
+    );
+  }
+
   List<Widget> itinerario() => [
     selector(
       'origen',
@@ -386,6 +576,7 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
         _llegada = valor;
       }
     });
+    _consultarCapacidad();
   }
 
   Future<void> elegirFin() async {
@@ -404,7 +595,14 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
   }
 
   List<Widget> vuelo() => [
-    texto('codigo', 'Código del vuelo', mayusculas: true),
+    InputDecorator(
+      decoration: const InputDecoration(labelText: 'Código del vuelo'),
+      child: Text(
+        widget.registro?['codigo']?.toString() ??
+            'Se asignará el siguiente número al guardar',
+      ),
+    ),
+    const SizedBox(height: 14),
     if (widget.registro == null) ...[
       DropdownButtonFormField<String>(
         key: const ValueKey('frecuencia_vuelo'),
@@ -431,7 +629,10 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
       'Ruta',
       catalogo('rutas'),
       _ruta,
-      (v) => setState(() => _ruta = v),
+      (v) {
+        setState(() => _ruta = v);
+        _consultarCapacidad();
+      },
       (e) =>
           e['nombre']?.toString() ??
           '${e['origen']?['iata']} → ${e['destino']?['iata']}',
@@ -487,34 +688,35 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
       Text(
         'Capacidad de cabina: ${clasesAvion.fold<int>(0, (s, c) => s + ValidacionOperaciones.capacidad(c))} asientos (solo lectura)',
       ),
-    for (final clase in clasesAvion)
-      Padding(
-        padding: const EdgeInsets.only(bottom: 14),
-        child: TextFormField(
-          key: ValueKey('tarifa_${clase['codigo']}'),
-          controller: _precios.putIfAbsent(
-            clase['codigo'],
-            () => TextEditingController(),
-          ),
-          decoration: InputDecoration(
-            labelText: 'Tarifa base USD · ${clase['nombre']}',
-            helperText: 'Mínimo USD 0.50. IVA 15% separado.',
-          ),
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          enabled: !_guardando,
-          inputFormatters: [
-            TextInputFormatter.withFunction(
-              (oldValue, newValue) =>
-                  RegExp(r'^\d{0,7}(\.\d{0,2})?$').hasMatch(newValue.text)
-                  ? newValue
-                  : oldValue,
+    if (clasesAvion.isNotEmpty) ...[
+      const Text('Tarifas base en USD. IVA 15% se calcula por separado.'),
+      tabla(
+        ['Clase', 'Filas', 'Asientos', 'Tarifa base USD'],
+        [
+          for (final clase in clasesAvion)
+            DataRow(
+              cells: [
+                DataCell(Text('${clase['nombre']} · ${clase['codigo']}')),
+                DataCell(
+                  Text(
+                    '${clase['fila_inicio']} – ${(clase['fila_inicio'] as num).toInt() + (clase['filas'] as num).toInt() - 1}',
+                  ),
+                ),
+                DataCell(Text('${ValidacionOperaciones.capacidad(clase)}')),
+                DataCell(_tarifa(clase)),
+              ],
             ),
-          ],
-          autovalidateMode: AutovalidateMode.onUserInteraction,
-          validator: (v) => ValidacionOperaciones.centavos(v ?? '') == null
-              ? 'Usa USD 0.50 o más, máximo dos decimales'
-              : null,
-        ),
+        ],
+      ),
+    ],
+    const _SeccionFormulario(
+      'Capacidad del aeropuerto de llegada',
+      Icons.flight_land,
+    ),
+    _panelCapacidad(),
+    if (_frecuencia == 'diaria')
+      const Text(
+        'En vuelos diarios se validarán todas las fechas de la programación.',
       ),
     if (catalogo('rutas').isEmpty || catalogo('aviones').isEmpty)
       const Text('Primero crea una ruta activa y un avión con cabina.'),
@@ -534,6 +736,10 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
             'zona_horaria',
           ])
             k: campo(k).text.trim(),
+          'capacidad_aterrizajes': int.parse(
+            campo('capacidad_aterrizajes', '10').text,
+          ),
+          'franja_minutos': _franja,
           'latitud': double.parse(campo('latitud').text),
           'longitud': double.parse(campo('longitud').text),
         };
@@ -577,7 +783,7 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
           return;
         }
         datos = {
-          'codigo': campo('codigo').text.trim(),
+          if (widget.registro != null) 'codigo': widget.registro!['codigo'],
           'ruta_id': _ruta,
           'avion_id': _avion,
           'salida_local': '${fecha(_salida!)}T${hora(_salida!)}',
@@ -596,13 +802,6 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
           if (_fechaFin == null) {
             setState(
               () => _error = 'Elige la última fecha de la programación diaria.',
-            );
-            return;
-          }
-          if (campo('codigo').text.trim().length > 21) {
-            setState(
-              () =>
-                  _error = 'El código base diario admite hasta 21 caracteres.',
             );
             return;
           }
@@ -647,7 +846,9 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
     return PopScope(
       canPop: !_guardando,
       child: DialogoAerotech(
-        maxWidth: 650,
+        maxWidth: widget.recurso == 'aviones' || widget.recurso == 'vuelos'
+            ? 900
+            : 760,
         title:
             '${widget.registro == null ? 'Crear' : 'Editar'} · ${widget.recurso}',
         subtitle: 'Completa los datos de la operación. Revisa los campos antes de guardar.',

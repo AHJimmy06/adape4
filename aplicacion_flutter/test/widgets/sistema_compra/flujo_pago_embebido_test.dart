@@ -123,6 +123,7 @@ void main() {
     );
     await tester.tap(find.text('Pagar con Stripe TEST'));
     await tester.pumpAndSettle();
+    expect(find.text('Pago seguro · Stripe TEST'), findsOneWidget);
     expect(find.text('Formulario Stripe embebido'), findsOneWidget);
     await tester.tap(find.text('Formulario Stripe embebido'));
     await tester.pumpAndSettle();

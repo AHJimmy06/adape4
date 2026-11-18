@@ -13,12 +13,14 @@ class SistemaApi {
     String ruta, {
     Map<String, dynamic>? body,
     Map<String, String>? parametros,
+    bool requiereToken = true,
   }) async {
     final datos = await apiService.solicitarSistema(
       metodo,
       _ruta(ruta),
       cuerpo: body,
       parametros: parametros,
+      requiereToken: requiereToken,
     );
     if (datos is Map<String, dynamic>) return datos;
     throw const ExcepcionApi('El servicio devolvió un formato no válido.');
@@ -27,13 +29,20 @@ class SistemaApi {
   Future<Map<String, dynamic>> get(
     String ruta, {
     Map<String, String>? parametros,
-  }) => _pedir('GET', ruta, parametros: parametros);
+    bool requiereToken = true,
+  }) =>
+      _pedir('GET', ruta, parametros: parametros, requiereToken: requiereToken);
   Future<List<Map<String, dynamic>>> lista(
     String ruta,
     String clave, {
     Map<String, String>? parametros,
+    bool requiereToken = true,
   }) async {
-    final datos = await get(ruta, parametros: parametros);
+    final datos = await get(
+      ruta,
+      parametros: parametros,
+      requiereToken: requiereToken,
+    );
     final lista = datos[clave];
     if (lista is! List) {
       throw const ExcepcionApi('El servicio no devolvió la lista solicitada.');

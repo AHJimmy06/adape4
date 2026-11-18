@@ -25,6 +25,7 @@ class ApiService {
   Usuario? _usuarioActual;
   Usuario? get usuarioActual => _usuarioActual;
   bool get esAdministrador => _usuarioActual?.esAdministrador ?? false;
+  bool get tieneSesion => _token?.isNotEmpty ?? false;
 
   void establecerToken(String token) {
     _token = token;
@@ -158,6 +159,16 @@ class ApiService {
     final usuario = _leerUsuario(datos);
     if (_usuarioActual?.id == usuario.id) _usuarioActual = usuario;
     return usuario;
+  }
+
+  Future<Usuario> cambiarEstadoUsuario(String usuarioId, bool activo) async {
+    final datos = await _enviarMapa(
+      'PUT',
+      '/api/admin/usuarios/${Uri.encodeComponent(usuarioId)}/estado',
+      requiereToken: true,
+      cuerpo: {'activo': activo},
+    );
+    return _leerUsuario(datos);
   }
 
   Future<Usuario> promoverUsuario(String id) async {

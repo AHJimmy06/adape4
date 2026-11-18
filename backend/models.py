@@ -9,7 +9,8 @@ class ErrorAPI(Exception):
     estado_http: int
 
 def usuario_publico(usuario: dict[str, Any]) -> dict[str, Any]:
-    return {"id": usuario["id"], "nombre": usuario["nombre"], "correo": usuario["correo"], "rol": usuario["rol"]}
+    return {"id": usuario["id"], "nombre": usuario["nombre"], "correo": usuario["correo"],
+            "rol": usuario["rol"], "activo": usuario.get("activo", True)}
 
 def reserva_publica(reserva: dict[str, Any]) -> dict[str, Any]:
     datos = {campo: reserva[campo] for campo in (

@@ -9,7 +9,8 @@ import '../widgets/sistema_compra/compra_sistema_dialog.dart';
 import '../widgets/sistema_compra/ruta_aeropuertos.dart';
 import 'sistema_reservas_page.dart';
 import 'sistema_admin_page.dart';
-import 'login_page.dart';
+import '../widgets/sistema_compra/autenticacion_compra.dart';
+import '../theme/aerotech_theme.dart';
 
 class SistemaVuelosPage extends StatefulWidget {
   const SistemaVuelosPage({
@@ -29,6 +30,7 @@ class _SistemaVuelosPageState extends State<SistemaVuelosPage> {
   late final _api = SistemaApi(widget.apiService);
   List<Map<String, dynamic>> _aeropuertos = [], _vuelos = [], _pedidos = [];
   String? _origen, _destino, _fecha, _error;
+  DateTimeRange? _rango;
   bool _busy = false;
   int _request = 0;
   @override
@@ -47,12 +49,26 @@ class _SistemaVuelosPageState extends State<SistemaVuelosPage> {
       'origen_id': ?_origen,
       'destino_id': ?_destino,
       'fecha': ?_fecha,
+      if (_rango != null) 'fecha_desde': _dia(_rango!.start),
+      if (_rango != null) 'fecha_hasta': _dia(_rango!.end),
     };
     try {
       final resultados = await Future.wait([
-        _api.lista('/vuelos', 'vuelos', parametros: parametros),
-        _api.lista('/pedidos', 'pedidos'),
-        if (inicial) _api.lista('/aeropuertos', 'aeropuertos'),
+        _api.lista(
+          '/vuelos',
+          'vuelos',
+          parametros: parametros,
+          requiereToken: widget.apiService.tieneSesion,
+        ),
+        widget.apiService.tieneSesion
+            ? _api.lista('/pedidos', 'pedidos')
+            : Future.value(<Map<String, dynamic>>[]),
+        if (inicial)
+          _api.lista(
+            '/aeropuertos',
+            'aeropuertos',
+            requiereToken: widget.apiService.tieneSesion,
+          ),
       ]);
       if (mounted && request == _request) {
         setState(() {
@@ -111,6 +127,9 @@ class _SistemaVuelosPageState extends State<SistemaVuelosPage> {
     if (mounted) _cargar();
   }
 
+  String _dia(DateTime date) =>
+      '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
   Widget _filtro(String label, String? value, ValueChanged<String?> changed) =>
       SizedBox(
         width: 250,
@@ -134,19 +153,20 @@ class _SistemaVuelosPageState extends State<SistemaVuelosPage> {
     appBar: AppBar(
       title: const Text('AeroTech · Vuelos'),
       actions: [
-        TextButton(
-          onPressed: () =>
-              Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) =>
-                      SistemaReservasPage(apiService: widget.apiService),
-                ),
-              ).then((_) {
-                if (mounted) _cargar();
-              }),
-          child: const Text('Mis reservas'),
-        ),
+        if (widget.apiService.tieneSesion)
+          TextButton(
+            onPressed: () =>
+                Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        SistemaReservasPage(apiService: widget.apiService),
+                  ),
+                ).then((_) {
+                  if (mounted) _cargar();
+                }),
+            child: const Text('Mis reservas'),
+          ),
         if (widget.apiService.esAdministrador)
           IconButton(
             tooltip: 'Administración',
@@ -162,20 +182,25 @@ class _SistemaVuelosPageState extends State<SistemaVuelosPage> {
                 }),
             icon: const Icon(Icons.admin_panel_settings),
           ),
-        IconButton(
-          tooltip: 'Cerrar sesión',
-          onPressed: () {
-            widget.apiService.cerrarSesion();
-            Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute<void>(
-                builder: (_) => LoginPage(apiService: widget.apiService),
-              ),
-              (_) => false,
-            );
-          },
-          icon: const Icon(Icons.logout),
-        ),
+        if (!widget.apiService.tieneSesion)
+          TextButton(
+            onPressed: () async {
+              if (await autenticarCompra(context, widget.apiService) &&
+                  mounted) {
+                await _cargar(inicial: true);
+              }
+            },
+            child: const Text('Iniciar sesión'),
+          ),
+        if (widget.apiService.tieneSesion)
+          IconButton(
+            tooltip: 'Cerrar sesión',
+            onPressed: () {
+              widget.apiService.cerrarSesion();
+              _cargar(inicial: true);
+            },
+            icon: const Icon(Icons.logout),
+          ),
       ],
     ),
     body: RefreshIndicator(
@@ -185,10 +210,15 @@ class _SistemaVuelosPageState extends State<SistemaVuelosPage> {
         children: [
           Text(
             'Tu próximo destino empieza aquí',
-            style: Theme.of(context).textTheme.headlineMedium,
-          ),
-          const Text(
-            'Aeropuertos reales · Asientos a elección · Pago seguro en Stripe TEST',
+            style: TextStyle(
+              fontFamily: 'AeroTechDisplay',
+              fontFamilyFallback: const ['Times New Roman', 'serif'],
+              fontSize: MediaQuery.sizeOf(context).width < 600 ? 42 : 58,
+              height: 1.08,
+              fontWeight: FontWeight.w400,
+              letterSpacing: -1.8,
+              color: AerotechTheme.navy,
+            ),
           ),
           const SizedBox(height: 20),
           Wrap(
@@ -209,12 +239,10 @@ class _SistemaVuelosPageState extends State<SistemaVuelosPage> {
                           lastDate: now.add(const Duration(days: 730)),
                         );
                         if (date != null && mounted) {
-                          setState(
-                            () => _fecha = date
-                                .toIso8601String()
-                                .split('T')
-                                .first,
-                          );
+                          setState(() {
+                            _fecha = _dia(date);
+                            _rango = null;
+                          });
                         }
                       },
                 icon: const Icon(Icons.calendar_month),
@@ -224,6 +252,44 @@ class _SistemaVuelosPageState extends State<SistemaVuelosPage> {
                 IconButton(
                   tooltip: 'Quitar fecha',
                   onPressed: () => setState(() => _fecha = null),
+                  icon: const Icon(Icons.clear),
+                ),
+              OutlinedButton.icon(
+                key: const ValueKey('filtro-rango-fechas'),
+                onPressed: _busy
+                    ? null
+                    : () async {
+                        final now = DateTime.now();
+                        final range = await showDateRangePicker(
+                          context: context,
+                          firstDate: DateTime(now.year, now.month, now.day),
+                          lastDate: DateTime(now.year + 2, 12, 31),
+                          initialDateRange: _rango,
+                          helpText: 'Salidas entre fechas',
+                          confirmText: 'Aplicar rango',
+                          saveText: 'Aplicar rango',
+                          cancelText: 'Cancelar',
+                          fieldStartLabelText: 'Desde',
+                          fieldEndLabelText: 'Hasta',
+                        );
+                        if (range != null && mounted) {
+                          setState(() {
+                            _rango = range;
+                            _fecha = null;
+                          });
+                        }
+                      },
+                icon: const Icon(Icons.date_range_outlined),
+                label: Text(
+                  _rango == null
+                      ? 'Rango de fechas'
+                      : '${_dia(_rango!.start)} → ${_dia(_rango!.end)}',
+                ),
+              ),
+              if (_rango != null)
+                IconButton(
+                  tooltip: 'Quitar rango',
+                  onPressed: () => setState(() => _rango = null),
                   icon: const Icon(Icons.clear),
                 ),
               FilledButton(

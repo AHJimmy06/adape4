@@ -6,6 +6,7 @@ import '../services/sistema_api.dart';
 import '../theme/aerotech_theme.dart';
 import '../widgets/sistema_admin/formulario_operacion.dart';
 import '../widgets/sistema_admin/usuarios/formulario_usuario.dart';
+import '../widgets/sistema_admin/usuarios/boton_estado_usuario.dart';
 
 class SistemaAdminPage extends StatefulWidget {
   const SistemaAdminPage({super.key, required this.apiService});
@@ -129,6 +130,10 @@ class _SistemaAdminPageState extends State<SistemaAdminPage> {
         recurso: recurso,
         registro: original,
         catalogos: _catalogos,
+        consultarDisponibilidad: (parametros) => _api.get(
+          '/disponibilidad-aeropuerto',
+          parametros: parametros.map((k, v) => MapEntry(k, v.toString())),
+        ),
         guardar: (datos) async {
           setState(() => _mutando = true);
           try {
@@ -289,7 +294,9 @@ class _SistemaAdminPageState extends State<SistemaAdminPage> {
   };
   Widget _lista() {
     if (_indice == 4) {
-      final admins = _usuarios.where((u) => u.esAdministrador).length;
+      final admins = _usuarios
+          .where((u) => u.esAdministrador && u.activo)
+          .length;
       return ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -374,6 +381,15 @@ class _SistemaAdminPageState extends State<SistemaAdminPage> {
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 8),
+                    BotonEstadoUsuario(
+                      key: ValueKey('estado_cuenta_${u.id}'),
+                      apiService: widget.apiService,
+                      usuario: u,
+                      currentUserId: widget.apiService.usuarioActual?.id,
+                      habilitado: !_cargando && !_mutando && _error == null,
+                      onCambio: _cargar,
                     ),
                   ],
                 ),

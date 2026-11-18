@@ -53,7 +53,9 @@ def test_admin_lists_public_users_and_promotes_existing_user_with_old_token(api)
     users = client.get("/api/admin/usuarios", headers=auth(admin))
     assert users.status_code == 200
     assert len(users.json) == 2
-    assert all(set(item) == {"id", "nombre", "correo", "rol"} for item in users.json)
+    assert all(set(item) == {"id", "nombre", "correo", "rol", "activo"} for item in users.json)
+    assert all(item['activo'] is True for item in users.json)
+    assert all(not {'password_hash', 'version_acceso', 'token'} & item.keys() for item in users.json)
     assert client.get("/api/auth/perfil", headers=auth(user)).json["usuario"]["rol"] == "USER"
     promoted = client.post("/api/admin/usuarios/usuario-2/promover", headers=auth(admin), json={"rol": "USER"})
     assert promoted.status_code == 200

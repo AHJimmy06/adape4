@@ -90,6 +90,10 @@ def validate_catalog(resource, data, update=False):
     if update:
         result['version'] = integer(data.get('version'))
     if resource == 'aeropuertos':
+        result['capacidad_aterrizajes'] = integer(data.get('capacidad_aterrizajes', 10), 1, 1000)
+        result['franja_minutos'] = integer(data.get('franja_minutos', 60), 15, 120)
+        if result['franja_minutos'] not in (15, 30, 60, 120):
+            invalid('La franja debe ser de 15, 30, 60 o 120 minutos.')
         for key in ('iata', 'nombre', 'ciudad', 'pais', 'codigo_pais', 'zona_horaria'):
             result[key] = text(data, key)
         result['iata'] = result['iata'].upper()
@@ -114,7 +118,7 @@ def validate_catalog(resource, data, update=False):
         if result['origen_id'] == result['destino_id']:
             invalid('Origen y destino deben ser distintos.')
     elif resource == 'vuelos':
-        result.update(codigo=text(data, 'codigo', 30).upper(), ruta_id=identifier(data.get('ruta_id')),
+        result.update(codigo=text(data, 'codigo', 30).upper() if data.get('codigo') else 'AUTO', ruta_id=identifier(data.get('ruta_id')),
                       avion_id=identifier(data.get('avion_id')))
         for key in ('salida_local', 'llegada_local'):
             value = text(data, key, 30)

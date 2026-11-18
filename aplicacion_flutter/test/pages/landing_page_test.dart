@@ -13,6 +13,34 @@ Widget _globo(BuildContext context) =>
     const SizedBox(key: ValueKey('globo-prueba'), width: 360, height: 360);
 
 void main() {
+  testWidgets('explorar abre catálogo público sin pasar por login', (
+    tester,
+  ) async {
+    final consultas = <String>[];
+    final api = ApiService(
+      client: MockClient((r) async {
+        consultas.add(r.url.path);
+        return http.Response(
+          r.url.path.endsWith('/aeropuertos')
+              ? '{"aeropuertos":[]}'
+              : '{"vuelos":[]}',
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LandingPage(apiService: api, globoBuilder: _globo),
+      ),
+    );
+    await tester.tap(find.text('Explorar vuelos'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SistemaVuelosPage), findsOneWidget);
+    expect(find.byType(LoginPage), findsNothing);
+    expect(consultas, contains('/api/sistema/vuelos'));
+    expect(consultas.any((p) => p.endsWith('/pedidos')), isFalse);
+  });
   for (final ancho in [360.0, 768.0, 904.0, 1440.0]) {
     testWidgets('landing mantiene botones y tarjetas uniformes a $ancho', (
       tester,

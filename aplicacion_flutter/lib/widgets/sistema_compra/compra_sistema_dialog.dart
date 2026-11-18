@@ -8,6 +8,7 @@ import '../../utils/checkout_operacion.dart';
 import '../../utils/checkout_launcher.dart';
 import 'cabina_sistema.dart';
 import 'stripe_embebido.dart';
+import 'autenticacion_compra.dart';
 import '../../theme/aerotech_theme.dart';
 import '../presentacion/dialogo_aerotech.dart';
 
@@ -44,6 +45,7 @@ class _CompraSistemaDialogState extends State<CompraSistemaDialog> {
   }
 
   Future<void> _cargar() async {
+    final teniaSesion = widget.api.apiService.tieneSesion;
     setState(() {
       _busy = true;
       _error = null;
@@ -51,24 +53,56 @@ class _CompraSistemaDialogState extends State<CompraSistemaDialog> {
     try {
       final data = await widget.api.get(
         '/vuelos/${widget.vuelo['id']}/asientos',
+        requiereToken: teniaSesion,
       );
       if (mounted) setState(() => _mapa = data);
     } catch (e) {
+      if (e is ExcepcionApi && e.codigo == 401 && mounted && teniaSesion) {
+        widget.api.apiService.cerrarSesion();
+        setState(() => _busy = false);
+        await _cargar();
+        return;
+      }
       if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
-  Future<void> _comprar() async {
+  Future<void> _comprar({bool reautenticar = true}) async {
     final codes = _seleccion.toList()..sort();
     if (codes.isEmpty || _busy) return;
-    final key = _operacion.preparar(widget.vuelo['id'].toString(), codes);
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
+      if (!widget.api.apiService.tieneSesion) {
+        setState(() => _busy = false);
+        final ingreso = await autenticarCompra(context, widget.api.apiService);
+        if (!mounted || !ingreso) return;
+        setState(() => _busy = true);
+        // La selección del invitado no retiene inventario; se revalida al entrar.
+        final mapa = await widget.api.get(
+          '/vuelos/${widget.vuelo['id']}/asientos',
+        );
+        if (!mounted) return;
+        final libres = mapas(mapa['asientos'])
+            .where((s) => s['estado'] == 'libre')
+            .map((s) => s['codigo'])
+            .toSet();
+        setState(() => _mapa = mapa);
+        if (codes.any((c) => !libres.contains(c))) {
+          setState(() {
+            _seleccion.removeWhere((c) => !libres.contains(c));
+            _error = 'La disponibilidad cambió mientras ingresabas. Conservamos los asientos libres; revisa tu selección.';
+          });
+          _operacion.limpiar();
+          widget.onRefresh();
+          return;
+        }
+      }
+      final key = _operacion.preparar(widget.vuelo['id'].toString(), codes);
       final data = await widget.api.post(
         '/pedidos',
         body: {
@@ -85,7 +119,17 @@ class _CompraSistemaDialogState extends State<CompraSistemaDialog> {
       widget.onRefresh();
     } catch (e) {
       if (!mounted) return;
-      if (e is ExcepcionApi && e.codigo == 409) {
+      if (e is ExcepcionApi && e.codigo == 401) {
+        widget.api.apiService.cerrarSesion();
+        if (reautenticar) {
+          setState(() => _busy = false);
+          await _comprar(reautenticar: false);
+        } else {
+          setState(
+            () => _error = 'La sesión no pudo validarse. Conservamos tu selección; vuelve a intentar iniciar sesión.',
+          );
+        }
+      } else if (e is ExcepcionApi && e.codigo == 409) {
         setState(() => _busy = false);
         await showDialog<void>(
           context: context,
@@ -203,6 +247,8 @@ class _PedidoSistemaState extends State<PedidoSistema> {
   Timer? _poll;
   var _pollCount = 0;
   String? _clientSecret, _publishableKey;
+  BuildContext? _pagoContext;
+  bool _pagoAbierto = false;
   bool get _pendiente => [
     'preparando_pago',
     'pendiente_pago',
@@ -286,6 +332,12 @@ class _PedidoSistemaState extends State<PedidoSistema> {
         );
       }
       if (abandonar || anterior != _pedido['estado']) widget.onRefresh();
+      if (!_pendiente &&
+          _pagoAbierto &&
+          _pagoContext?.mounted == true &&
+          ModalRoute.of(_pagoContext!)?.isCurrent == true) {
+        Navigator.of(_pagoContext!).pop();
+      }
     } catch (e) {
       if (mounted && !silencioso) {
         setState(
@@ -299,7 +351,7 @@ class _PedidoSistemaState extends State<PedidoSistema> {
   }
 
   Future<void> _abrir() async {
-    if (_busy) return;
+    if (_busy || _pagoAbierto) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -319,10 +371,91 @@ class _PedidoSistemaState extends State<PedidoSistema> {
       setState(() {
         _clientSecret = secret;
         _publishableKey = key;
+        _busy = false;
       });
+      _pagoAbierto = true;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (modalContext) {
+          _pagoContext = modalContext;
+          final viewport = MediaQuery.sizeOf(modalContext);
+          return Dialog(
+            key: const ValueKey('modal-pago-stripe'),
+            backgroundColor: Colors.white,
+            surfaceTintColor: Colors.transparent,
+            insetPadding: EdgeInsets.all(viewport.width < 600 ? 8 : 24),
+            clipBehavior: Clip.antiAlias,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: SizedBox(
+              width: 1080,
+              height: (viewport.height - (viewport.width < 600 ? 16 : 48))
+                  .clamp(240, 900),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 8, 12),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Pago seguro · Stripe TEST',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 20,
+                                  color: AerotechTheme.navy,
+                                ),
+                              ),
+                              Text(
+                                'Total: ${dinero(_pedido['total_centavos'])}',
+                                style: const TextStyle(
+                                  color: AerotechTheme.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Cerrar pago',
+                          icon: const Icon(Icons.close),
+                          onPressed: () => Navigator.pop(modalContext),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  Expanded(
+                    child:
+                        widget.stripeBuilder?.call(
+                          _clientSecret!,
+                          _publishableKey!,
+                          () => _actualizar(),
+                        ) ??
+                        StripeEmbebido(
+                          clientSecret: _clientSecret!,
+                          publishableKey: _publishableKey!,
+                          onComplete: () => _actualizar(),
+                        ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     } finally {
+      _pagoAbierto = false;
+      _pagoContext = null;
+      _clientSecret = null;
+      _publishableKey = null;
       if (mounted) setState(() => _busy = false);
     }
   }
@@ -427,7 +560,7 @@ class _PedidoSistemaState extends State<PedidoSistema> {
             ),
           ),
           const SizedBox(height: 16),
-          if (pendiente && _clientSecret == null)
+          if (pendiente)
             FilledButton.icon(
               onPressed: _busy ? null : _abrir,
               icon: const Icon(Icons.lock_outline, size: 18),
@@ -436,17 +569,6 @@ class _PedidoSistemaState extends State<PedidoSistema> {
                 textAlign: TextAlign.center,
               ),
             ),
-          if (pendiente && _clientSecret != null)
-            widget.stripeBuilder?.call(
-                  _clientSecret!,
-                  _publishableKey!,
-                  () => _actualizar(),
-                ) ??
-                StripeEmbebido(
-                  clientSecret: _clientSecret!,
-                  publishableKey: _publishableKey!,
-                  onComplete: () => _actualizar(),
-                ),
           if (pendiente) ...[
             const SizedBox(height: 18),
             const Text(

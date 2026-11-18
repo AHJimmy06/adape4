@@ -63,7 +63,7 @@ class FakeRepository:
     def administrar_usuario(self, actor_id, accion, datos):
         with self._lock:
             actor = self.buscar_usuario_por_id(actor_id)
-            if not actor or actor['rol'] != 'ADMIN':
+            if not actor or actor['rol'] != 'ADMIN' or not actor.get('activo', True):
                 raise ErrorAPI('acceso_denegado', 'Se requiere ADMIN vigente.', 403)
             if accion == 'crear':
                 if datos['correo'] in self.users:
@@ -75,6 +75,13 @@ class FakeRepository:
             user = self.buscar_usuario_por_id(datos['id'])
             if not user:
                 raise ErrorAPI('usuario_no_encontrado', 'No se encontró el usuario.', 404)
+            if accion == 'estado':
+                if user['id'] == actor_id and not datos['activo']:
+                    raise ErrorAPI('auto_desactivacion', 'No puedes desactivar tu propia cuenta.', 400)
+                if user.get('activo', True) and not datos['activo']:
+                    user['version_acceso'] = user.get('version_acceso', 0) + 1
+                user['activo'] = datos['activo']
+                return user
             if user['id'] == actor_id and datos['rol'] == 'USER':
                 raise ErrorAPI('auto_retiro', 'No puedes retirar tu propio acceso ADMIN.', 400)
             user['rol'] = datos['rol']
@@ -196,7 +203,7 @@ def test_registro_valida_datos_y_no_expone_hash(api):
 
     response = registrar(client)
     assert response.status_code == 201
-    assert response.get_json()["usuario"] == {"id": "usuario-1", "nombre": "Ana", "correo": "ana@example.com", "rol": "USER"}
+    assert response.get_json()["usuario"] == {"id": "usuario-1", "nombre": "Ana", "correo": "ana@example.com", "rol": "USER", "activo": True}
     assert response.get_json()["mensaje"]
     assert "password_hash" not in response.get_json()["usuario"]
     assert repo.users["ana@example.com"]["password_hash"] != "ClaveSegura123"

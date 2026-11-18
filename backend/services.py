@@ -83,9 +83,12 @@ class ServicioAutenticacion:
         usuario = self.repositorio.buscar_usuario_por_correo(correo)
         if not usuario or not check_password_hash(usuario["password_hash"], contrasena):
             raise ErrorAPI("credenciales_invalidas", "Correo o contrasena incorrectos.", 401)
+        if usuario.get("activo", True) is not True:
+            raise ErrorAPI("cuenta_inactiva", "Tu cuenta está desactivada. Contacta con un administrador.", 401)
         ahora, token_id = datetime.now(timezone.utc), str(uuid4())
         vence = ahora + self.duracion
-        token = jwt.encode({"sub": str(usuario["id"]), "jti": token_id, "iat": ahora, "exp": vence},
+        token = jwt.encode({"sub": str(usuario["id"]), "jti": token_id, "iat": ahora, "exp": vence,
+                            "version_acceso": usuario.get("version_acceso", 0)},
                            self.secreto, algorithm="HS256")
         self.repositorio.crear_token(str(usuario["id"]), token_id, vence.isoformat())
         return usuario, token
@@ -99,6 +102,10 @@ class ServicioAutenticacion:
             usuario = self.repositorio.buscar_usuario_por_id(usuario_id)
             if not usuario:
                 raise ErrorAPI("token_invalido", "El token no es valido o ha expirado.", 401)
+            if usuario.get("activo", True) is not True:
+                raise ErrorAPI("cuenta_inactiva", "Tu cuenta está desactivada. Contacta con un administrador.", 401)
+            if identidad.get("version_acceso", 0) != usuario.get("version_acceso", 0):
+                raise ErrorAPI("token_invalido", "Inicia sesión nuevamente para continuar.", 401)
             return usuario
         except jwt.PyJWTError as error:
             raise ErrorAPI("token_invalido", "El token no es valido o ha expirado.", 401) from error

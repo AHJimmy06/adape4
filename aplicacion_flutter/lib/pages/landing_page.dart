@@ -5,6 +5,7 @@ import '../theme/aerotech_theme.dart';
 import '../widgets/globo_vuelos.dart';
 import 'login_page.dart';
 import 'registro_page.dart';
+import 'sistema_vuelos_page.dart';
 
 class LandingPage extends StatefulWidget {
   LandingPage({super.key, ApiService? apiService, this.globoBuilder})
@@ -32,6 +33,18 @@ class _LandingPageState extends State<LandingPage> {
                 apiService: widget.apiService,
                 globoBuilder: widget.globoBuilder,
               ),
+      ),
+    );
+    if (mounted) setState(() => _navegando = false);
+  }
+
+  Future<void> _explorar() async {
+    if (_navegando) return;
+    setState(() => _navegando = true);
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => SistemaVuelosPage(apiService: widget.apiService),
       ),
     );
     if (mounted) setState(() => _navegando = false);
@@ -246,7 +259,7 @@ class _LandingPageState extends State<LandingPage> {
             ),
           ),
           OutlinedButton.icon(
-            onPressed: () => _abrir(registro: false),
+            onPressed: _explorar,
             icon: const Icon(Icons.travel_explore_rounded, size: 20),
             label: const Text('Explorar vuelos'),
             style: OutlinedButton.styleFrom(
