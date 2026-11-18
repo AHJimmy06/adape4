@@ -22,9 +22,11 @@ class RutaInternacional3D extends StatefulWidget {
     required this.ruta,
     this.constructorVisor,
     this.envolverVisor,
+    this.escalaAvion = .85,
   });
   final RutaVuelo ruta;
   final ConstructorVisorRuta? constructorVisor;
+  final double escalaAvion;
   @visibleForTesting
   final Widget Function(Flutter3DViewer viewer)? envolverVisor;
   @override
@@ -46,7 +48,8 @@ class _RutaInternacional3DState extends State<RutaInternacional3D> {
   void didUpdateWidget(covariant RutaInternacional3D oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.ruta.origen != widget.ruta.origen ||
-        oldWidget.ruta.destino != widget.ruta.destino) {
+        oldWidget.ruta.destino != widget.ruta.destino ||
+        oldWidget.escalaAvion != widget.escalaAvion) {
       _load();
     }
   }
@@ -67,6 +70,7 @@ class _RutaInternacional3DState extends State<RutaInternacional3D> {
           bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes),
           a,
           b,
+          escalaAvion: widget.escalaAvion,
         ),
       );
       if (!mounted || request != _request) {

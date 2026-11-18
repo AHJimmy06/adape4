@@ -12,6 +12,18 @@ import 'package:http/testing.dart';
 Widget _globo(BuildContext context) =>
     const SizedBox(key: ValueKey('globo-prueba'), width: 360, height: 360);
 
+ApiService _apiVacia() => ApiService(
+  client: MockClient(
+    (r) async => http.Response(
+      r.url.path.endsWith('/aeropuertos')
+          ? '{"aeropuertos":[]}'
+          : '{"vuelos":[]}',
+      200,
+      headers: {'content-type': 'application/json'},
+    ),
+  ),
+);
+
 void main() {
   testWidgets('explorar abre catálogo público sin pasar por login', (
     tester,
@@ -34,7 +46,7 @@ void main() {
         home: LandingPage(apiService: api, globoBuilder: _globo),
       ),
     );
-    await tester.tap(find.text('Explorar vuelos'));
+    await tester.tap(find.byKey(const ValueKey('landing-explorar-vuelos')));
     await tester.pumpAndSettle();
     expect(find.byType(SistemaVuelosPage), findsOneWidget);
     expect(find.byType(LoginPage), findsNothing);
@@ -50,14 +62,14 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           theme: AerotechTheme.light,
-          home: LandingPage(globoBuilder: _globo),
+          home: LandingPage(apiService: _apiVacia(), globoBuilder: _globo),
         ),
       );
       final crear = tester.getSize(
         find.byKey(const ValueKey('landing-crear-cuenta')),
       );
       final explorar = tester.getSize(
-        find.widgetWithText(OutlinedButton, 'Explorar vuelos'),
+        find.widgetWithText(FilledButton, 'Explorar vuelos'),
       );
       expect(crear.width, explorar.width);
       expect(crear.height, explorar.height);
@@ -88,7 +100,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           theme: AerotechTheme.light,
-          home: LandingPage(globoBuilder: _globo),
+          home: LandingPage(apiService: _apiVacia(), globoBuilder: _globo),
         ),
       );
       expect(find.text('El mundo está\nmás cerca.'), findsOneWidget);
@@ -101,7 +113,7 @@ void main() {
   testWidgets('iniciar sesión conserva servicio y permite volver', (
     tester,
   ) async {
-    final api = ApiService();
+    final api = _apiVacia();
     await tester.pumpWidget(
       MaterialApp(
         home: LandingPage(apiService: api, globoBuilder: _globo),
@@ -124,7 +136,7 @@ void main() {
   testWidgets('crear cuenta abre registro con el mismo servicio', (
     tester,
   ) async {
-    final api = ApiService();
+    final api = _apiVacia();
     await tester.pumpWidget(
       MaterialApp(
         home: LandingPage(apiService: api, globoBuilder: _globo),
@@ -153,7 +165,13 @@ void main() {
             200,
           );
         }
-        return http.Response('[]', 200);
+        return http.Response(
+          solicitud.url.path.endsWith('/aeropuertos')
+              ? '{"aeropuertos":[]}'
+              : '{"vuelos":[]}',
+          200,
+          headers: {'content-type': 'application/json'},
+        );
       }),
     );
     await tester.pumpWidget(

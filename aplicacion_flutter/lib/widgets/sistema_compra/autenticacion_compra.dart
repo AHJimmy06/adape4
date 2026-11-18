@@ -4,18 +4,28 @@ import '../../services/api_service.dart';
 import '../../validators/validaciones_autenticacion.dart';
 import '../presentacion/dialogo_aerotech.dart';
 
-Future<bool> autenticarCompra(BuildContext context, ApiService api) async =>
+Future<bool> autenticarCompra(
+  BuildContext context,
+  ApiService api, {
+  bool registroInicial = false,
+}) async =>
     await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => AutenticacionCompra(api: api),
+      builder: (_) =>
+          AutenticacionCompra(api: api, registroInicial: registroInicial),
     ) ??
     false;
 
 /// Autentica sin reemplazar la ruta ni descartar la selección de cabina.
 class AutenticacionCompra extends StatefulWidget {
-  const AutenticacionCompra({super.key, required this.api});
+  const AutenticacionCompra({
+    super.key,
+    required this.api,
+    this.registroInicial = false,
+  });
   final ApiService api;
+  final bool registroInicial;
   @override
   State<AutenticacionCompra> createState() => _AutenticacionCompraState();
 }
@@ -25,8 +35,15 @@ class _AutenticacionCompraState extends State<AutenticacionCompra> {
   final _nombre = TextEditingController();
   final _correo = TextEditingController();
   final _clave = TextEditingController();
-  bool _registro = false, _busy = false;
+  late bool _registro;
+  bool _busy = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _registro = widget.registroInicial;
+  }
 
   @override
   void dispose() {

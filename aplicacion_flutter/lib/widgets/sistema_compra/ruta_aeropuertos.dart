@@ -33,7 +33,7 @@ class RutaAeropuertos extends StatelessWidget {
         ),
         Expanded(
           child: ruta.esInternacional
-              ? RutaInternacional3D(ruta: ruta)
+              ? RutaInternacional3D(ruta: ruta, escalaAvion: .6)
               : FutureBuilder<String>(
                   future: rootBundle.loadString(
                     'assets/maps/paises_rutas.json',

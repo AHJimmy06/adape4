@@ -111,7 +111,11 @@ class _CompraSistemaDialogState extends State<CompraSistemaDialog> {
     try {
       if (!widget.api.apiService.tieneSesion) {
         setState(() => _busy = false);
-        final ingreso = await autenticarCompra(context, widget.api.apiService);
+        final ingreso = await autenticarCompra(
+          context,
+          widget.api.apiService,
+          registroInicial: true,
+        );
         if (!mounted || !ingreso) return;
         setState(() => _busy = true);
         // La selección del invitado no retiene inventario; se revalida al entrar.
@@ -237,6 +241,11 @@ class _CompraSistemaDialogState extends State<CompraSistemaDialog> {
             pedido: _pedido!,
             launcher: widget.launcher,
             onRefresh: widget.onRefresh,
+            onAbandonado: () {
+              if (mounted && ModalRoute.of(context)?.isCurrent == true) {
+                Navigator.pop(context);
+              }
+            },
           )
         else if (_mapa != null)
           CabinaSistema(
@@ -279,11 +288,13 @@ class PedidoSistema extends StatefulWidget {
     required this.launcher,
     required this.onRefresh,
     this.stripeBuilder,
+    this.onAbandonado,
   });
   final SistemaApi api;
   final Map<String, dynamic> pedido;
   final CheckoutLauncher launcher;
   final VoidCallback onRefresh;
+  final VoidCallback? onAbandonado;
   final Widget Function(String secret, String key, VoidCallback onComplete)?
   stripeBuilder;
   @override
@@ -300,6 +311,7 @@ class _PedidoSistemaState extends State<PedidoSistema> {
   String? _clientSecret, _publishableKey;
   BuildContext? _pagoContext;
   bool _pagoAbierto = false;
+  bool _abandonoNotificado = false;
   bool get _pendiente => [
     'preparando_pago',
     'pendiente_pago',
@@ -344,6 +356,7 @@ class _PedidoSistemaState extends State<PedidoSistema> {
       _clientSecret = null;
       _publishableKey = null;
       _pollCount = 0;
+      _abandonoNotificado = false;
       _programar();
     } else if (_pendiente ||
         ![
@@ -377,17 +390,23 @@ class _PedidoSistemaState extends State<PedidoSistema> {
               body: {'clave_operacion': _abandonarKey},
             )
           : await widget.api.get('/pedidos/${_pedido['id']}');
-      if (mounted) {
-        setState(
-          () => _pedido = Map<String, dynamic>.from(data['pedido'] as Map),
-        );
-      }
+      if (!mounted) return;
+      setState(
+        () => _pedido = Map<String, dynamic>.from(data['pedido'] as Map),
+      );
       if (abandonar || anterior != _pedido['estado']) widget.onRefresh();
       if (!_pendiente &&
           _pagoAbierto &&
           _pagoContext?.mounted == true &&
           ModalRoute.of(_pagoContext!)?.isCurrent == true) {
         Navigator.of(_pagoContext!).pop();
+      }
+      if (abandonar &&
+          ['cancelado', 'expirado'].contains(_pedido['estado']) &&
+          !_abandonoNotificado) {
+        _abandonoNotificado = true;
+        _poll?.cancel();
+        widget.onAbandonado?.call();
       }
     } catch (e) {
       if (mounted && !silencioso) {

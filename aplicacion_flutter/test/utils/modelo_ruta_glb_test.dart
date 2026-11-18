@@ -37,6 +37,35 @@ List<List<double>> samples(
 }
 
 void main() {
+  test(
+    'selected route line is black without recoloring destination markers',
+    () {
+      final base = File(rutaModeloBase).readAsBytesSync();
+      final original = document(base);
+      final doc = document(crearModeloRuta(base, (4.7, -74), (-12, -77)));
+      final material = doc['meshes'][4]['primitives'][0]['material'] as int;
+      expect(
+        doc['materials'][material]['pbrMetallicRoughness']['baseColorFactor'],
+        [0, 0, 0, 1],
+      );
+      expect(doc['meshes'][3], original['meshes'][3]);
+      expect(
+        (doc['materials'] as List).take((original['materials'] as List).length),
+        original['materials'],
+      );
+    },
+  );
+  test('smaller route aircraft preserves the default scene and trajectory', () {
+    final base = File(rutaModeloBase).readAsBytesSync();
+    final original = document(crearModeloRuta(base, (4.7, -74), (-12, -77)));
+    final smaller = document(
+      crearModeloRuta(base, (4.7, -74), (-12, -77), escalaAvion: .6),
+    );
+    expect(original['nodes'][3]['scale'], [.85, .85, .85]);
+    expect(smaller['nodes'][3]['scale'], [.6, .6, .6]);
+    smaller['nodes'][3]['scale'] = original['nodes'][3]['scale'];
+    expect(smaller, original);
+  });
   test('country endpoints are geographic and arc is raised', () {
     final a = vectorPais((-1.8, -78.2)), b = vectorPais((39, -98));
     for (var i = 0; i < 3; i++) {
@@ -64,7 +93,10 @@ void main() {
       expect(doc['meshes'][i], equals(original['meshes'][i]));
     }
     expect(doc['images'], original['images']);
-    expect(doc['materials'], original['materials']);
+    expect(
+      (doc['materials'] as List).take((original['materials'] as List).length),
+      original['materials'],
+    );
     expect(doc['nodes'], hasLength(7));
     expect(doc['scenes'][0]['nodes'], [0]);
     expect(doc['animations'], hasLength(1));

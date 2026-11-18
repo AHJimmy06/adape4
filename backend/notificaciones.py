@@ -80,7 +80,35 @@ def _detalle_pasajero(asiento):
     return '\n'.join(details)
 
 
+def _datos_personales(datos):
+    """Defensa adicional: cada fila debe pertenecer al correo del destinatario."""
+    correo = str(datos['correo']).strip().lower()
+    propios = []
+    totales = dict(subtotal_centavos=0, iva_centavos=0, total_centavos=0)
+    for asiento in datos['asientos']:
+        pasajero = asiento.get('pasajero') if isinstance(asiento, dict) else None
+        if (not isinstance(pasajero, dict) or pasajero.get('asignado') is not True
+                or str(pasajero.get('correo', '')).strip().lower() != correo):
+            raise ErrorCorreo('correo_datos_invalidos')
+        for campo in totales:
+            valor = asiento.get(campo)
+            if not isinstance(valor, int) or isinstance(valor, bool) or valor < 0:
+                raise ErrorCorreo('correo_datos_invalidos')
+            totales[campo] += valor
+        propios.append({**asiento, 'pasajero': {
+            'nombre': datos['nombre'], 'correo': correo,
+            'categoria': pasajero.get('categoria', 'adulto'), 'asignado': True,
+        }})
+    if not propios:
+        raise ErrorCorreo('correo_datos_invalidos')
+    # Son sumas de valores congelados; nunca se recalculan tarifas ni impuestos.
+    return {**datos, **totales, 'asientos': propios}
+
+
 def _contenido(datos):
+    personal = datos.get('tipo') == 'pasajero'
+    if personal:
+        datos = _datos_personales(datos)
     vuelo = datos['vuelo']
     asientos = []
     for asiento in datos['asientos']:
@@ -93,24 +121,31 @@ def _contenido(datos):
     salida = _horario_correo(vuelo, 'salida', 'origen')
     llegada = _horario_correo(vuelo, 'llegada', 'destino')
     codigo = str(vuelo.get('codigo') or 'AeroTech')
-    referencia = str(datos['reserva_id'])
+    referencia = '' if personal else str(datos['reserva_id'])
     subtotal = _importe(datos, 'subtotal_centavos')
     iva = _importe(datos, 'iva_centavos')
     total = _importe(datos, 'total_centavos')
+    etiqueta_total = 'Importe de tus asientos' if personal else 'Total pagado'
     detalles = [
-        ('Cliente', str(datos['nombre'])), ('Correo', str(datos['correo'])),
-        ('Referencia de reserva', referencia), ('Vuelo', codigo),
+        ('Pasajero' if personal else 'Cliente', str(datos['nombre'])), ('Correo', str(datos['correo'])),
+        *([] if personal else [('Referencia de reserva', referencia)]), ('Vuelo', codigo),
         ('Aeropuerto de origen', origen), ('Aeropuerto de destino', destino),
         ('Salida', salida), ('Llegada', llegada),
-        ('Subtotal', subtotal), ('IVA', iva), ('Total pagado', total),
+        ('Subtotal', subtotal), ('IVA', iva), (etiqueta_total, total),
     ]
     saludo = f"Hola, {datos['nombre']}."
-    aviso = 'Tu pago fue confirmado y estos son los detalles de tu reserva.'
-    nota = 'Comprobante académico de reserva. No es un documento fiscal.'
+    titulo = 'Tu asiento está confirmado' if personal else 'Gracias por confiar en AeroTech'
+    agradecimiento = 'Tu viaje está listo' if personal else 'Gracias por tu compra'
+    comprobante = 'Detalle de tus asientos' if personal else 'Comprobante de compra'
+    estado = 'ASIENTOS CONFIRMADOS · TU VIAJE LISTO' if personal else 'PAGO CONFIRMADO · RESERVA LISTA'
+    aviso = ('El pago de tus asientos asignados fue confirmado. Estos son los detalles de tu viaje.'
+             if personal else 'Tu pago fue confirmado y estos son los detalles de tu reserva.')
+    nota = ('Confirmación académica de asientos. No es un documento fiscal.' if personal
+            else 'Comprobante académico de reserva. No es un documento fiscal.')
     sandbox = 'Demostración en Mailtrap Sandbox: este correo no se entrega a un buzón real.'
     texto = '\n\n'.join([
-        'Gracias por confiar en AeroTech', saludo, 'Gracias por tu compra', aviso,
-        'Comprobante de compra\n' + '\n'.join(f'{k}: {v}' for k, v in detalles),
+        titulo, saludo, agradecimiento, aviso,
+        comprobante + '\n' + '\n'.join(f'{k}: {v}' for k, v in detalles),
         'Asientos confirmados\n' + '\n'.join(f'{a} · {c}' + (f'\n{d}' if d else '') for a, c, d in asientos),
         nota, sandbox,
     ])
@@ -122,6 +157,10 @@ def _contenido(datos):
          f'{escape(d).replace(chr(10), "<br>")}</td></tr>' if d else '')
         for a, c, d in asientos
     )
+    referencia_html = '' if personal else (
+        '<p style="margin:0 0 6px;font-size:12px;color:#526784">Referencia de reserva</p>\n'
+        f'<p style="margin:0 0 14px;font-size:13px;color:#102d4b">{escape(referencia)}</p>')
+    alcance = 'asignados a tu nombre' if personal else 'en tu reserva'
     # Tablas e instrucciones inline: no dependemos de imágenes, scripts ni CSS externo.
     html = f'''<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
@@ -137,10 +176,10 @@ def _contenido(datos):
 <p style="margin:8px 0 0;font-size:11px;letter-spacing:2px;color:#a8e4eb">TU PRÓXIMA HISTORIA EMPIEZA CON UN VUELO</p>
 </td></tr>
 <tr><td style="padding:28px 24px 20px">
-<p style="margin:0 0 12px;font-size:12px;font-weight:bold;color:#176bac">PAGO CONFIRMADO · RESERVA LISTA</p>
-<p style="margin:0 0 16px;font-size:30px;line-height:38px;font-weight:bold;color:#102d4b">Gracias por confiar en AeroTech</p>
+<p style="margin:0 0 12px;font-size:12px;font-weight:bold;color:#176bac">{escape(estado)}</p>
+<p style="margin:0 0 16px;font-size:30px;line-height:38px;font-weight:bold;color:#102d4b">{escape(titulo)}</p>
 <p style="margin:0 0 8px;font-size:16px;line-height:24px">{escape(saludo)}</p>
-<p style="margin:0;font-size:15px;line-height:24px"><strong>Gracias por tu compra.</strong> {escape(aviso)}</p>
+<p style="margin:0;font-size:15px;line-height:24px"><strong>{escape(agradecimiento)}.</strong> {escape(aviso)}</p>
 </td></tr>
 <tr><td style="padding:0 24px 24px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#eef8fa;border-left:4px solid #1689a3">
@@ -154,22 +193,21 @@ def _contenido(datos):
 </td></tr>
 <tr><td style="padding:0 24px 24px">
 <p style="margin:0 0 12px;font-size:19px;font-weight:bold">Asientos confirmados</p>
-<p style="margin:0 0 12px;font-size:13px;color:#526784">{len(asientos)} {'asiento' if len(asientos) == 1 else 'asientos'} en tu reserva</p>
+<p style="margin:0 0 12px;font-size:13px;color:#526784">{len(asientos)} {'asiento' if len(asientos) == 1 else 'asientos'} {escape(alcance)}</p>
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-size:14px">
 <tr><th scope="col" align="left" style="padding:10px 12px;background-color:#edf4f9;color:#526784">Asiento</th>
 <th scope="col" align="left" style="padding:10px 12px;background-color:#edf4f9;color:#526784">Clase</th></tr>
 {filas_asientos}</table>
 </td></tr>
 <tr><td style="padding:0 24px 24px">
-<p style="margin:0 0 14px;font-size:19px;font-weight:bold">Comprobante de compra</p>
-<p style="margin:0 0 6px;font-size:12px;color:#526784">Referencia de reserva</p>
-<p style="margin:0 0 14px;font-size:13px;color:#102d4b">{escape(referencia)}</p>
+<p style="margin:0 0 14px;font-size:19px;font-weight:bold">{escape(comprobante)}</p>
+{referencia_html}
 <p style="margin:0 0 4px;font-size:14px">{escape(str(datos['nombre']))}</p>
 <p style="margin:0 0 16px;font-size:13px;color:#526784">{escape(str(datos['correo']))}</p>
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-size:14px">
 <tr><td style="padding:10px 0;color:#526784">Subtotal</td><td align="right" style="padding:10px 0">{escape(subtotal)}</td></tr>
 <tr><td style="padding:10px 0;color:#526784">IVA</td><td align="right" style="padding:10px 0">{escape(iva)}</td></tr>
-<tr><td style="padding:16px 12px;background-color:#102d4b;color:#ffffff;font-weight:bold">Total pagado</td>
+<tr><td style="padding:16px 12px;background-color:#102d4b;color:#ffffff;font-weight:bold">{escape(etiqueta_total)}</td>
 <td align="right" style="padding:16px 12px;background-color:#102d4b;color:#ffffff;font-size:22px;font-weight:bold">{escape(total)}</td></tr>
 </table>
 </td></tr>

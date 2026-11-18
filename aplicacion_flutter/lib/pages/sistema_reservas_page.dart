@@ -10,6 +10,7 @@ import '../utils/formateador_xml.dart';
 import '../widgets/presentacion/dialogo_aerotech.dart';
 import '../theme/aerotech_theme.dart';
 import '../widgets/sistema_compra/compra_sistema_dialog.dart';
+import 'sistema_vuelos_page.dart';
 
 class SistemaReservasPage extends StatefulWidget {
   const SistemaReservasPage({super.key, required this.apiService});
@@ -61,7 +62,7 @@ class _SistemaReservasPageState extends State<SistemaReservasPage> {
   }
 
   Future<void> _continuarPago(Map<String, dynamic> pedido) async {
-    await showDialog<void>(
+    final abandonado = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (c) => DialogoAerotech(
@@ -75,10 +76,29 @@ class _SistemaReservasPageState extends State<SistemaReservasPage> {
           pedido: pedido,
           launcher: abrirCheckout,
           onRefresh: _cargar,
+          onAbandonado: () {
+            if (c.mounted && ModalRoute.of(c)?.isCurrent == true) {
+              Navigator.pop(c, true);
+            }
+          },
         ),
       ),
     );
-    if (mounted) await _cargar();
+    if (!mounted) return;
+    if (abandonado == true) {
+      if (Navigator.canPop(context)) {
+        Navigator.pop(context);
+      } else {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => SistemaVuelosPage(apiService: widget.apiService),
+          ),
+        );
+      }
+    } else {
+      await _cargar();
+    }
   }
 
   Widget _pendiente(Map<String, dynamic> p) {

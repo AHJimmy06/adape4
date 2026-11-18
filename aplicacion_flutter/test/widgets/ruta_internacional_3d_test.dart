@@ -4,13 +4,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_3d_controller/flutter_3d_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Future<void> settleSource(WidgetTester tester) async {
-  for (var i = 0; i < 6; i++) {
+Future<void> settleSource(WidgetTester tester, bool Function() loaded) async {
+  final deadline = DateTime.now().add(const Duration(seconds: 10));
+  for (var i = 0; i < 100; i++) {
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 100)),
     );
     await tester.pump();
+    if (loaded()) return;
+    if (!DateTime.now().isBefore(deadline)) break;
   }
+  fail('El visor 3D no se creó dentro del límite de 10 segundos.');
 }
 
 Widget route(String destination, ValueChanged<Flutter3DViewer> capture) =>
@@ -34,7 +38,7 @@ void main() {
     (tester) async {
       Flutter3DViewer? first;
       await tester.pumpWidget(route('Miami, USA', (v) => first = v));
-      await settleSource(tester);
+      await settleSource(tester, () => first != null);
       expect(first, isNotNull);
       final load = first!.onLoad!, error = first!.onError!;
       await tester.pumpWidget(
@@ -57,11 +61,11 @@ void main() {
     (tester) async {
       Flutter3DViewer? first, second;
       await tester.pumpWidget(route('Miami, USA', (v) => first = v));
-      await settleSource(tester);
+      await settleSource(tester, () => first != null);
       expect(first, isNotNull);
       final load = first!.onLoad!, error = first!.onError!;
       await tester.pumpWidget(route('Madrid, España', (v) => second = v));
-      await settleSource(tester);
+      await settleSource(tester, () => second != null);
       expect(second, isNotNull);
       expect(second!.src, isNot(first!.src));
       // Test viewers never initialize their controllers; any stale controller call

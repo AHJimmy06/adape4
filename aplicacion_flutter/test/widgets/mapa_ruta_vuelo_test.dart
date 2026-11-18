@@ -27,16 +27,19 @@ Future<void> showMap(
       ),
     ),
   );
-  await tester.runAsync(
-    () => Future<void>.delayed(const Duration(milliseconds: 250)),
-  );
-  for (var i = 0; i < 4; i++) {
+  final deadline = DateTime.now().add(const Duration(seconds: 10));
+  for (var i = 0; i < 100; i++) {
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 100)),
     );
     await tester.pump();
+    if (find.byType(CircularProgressIndicator).evaluate().isEmpty) {
+      await tester.pumpAndSettle();
+      return;
+    }
+    if (!DateTime.now().isBefore(deadline)) break;
   }
-  await tester.pumpAndSettle();
+  fail('La carga de la ruta no terminó dentro del límite de 10 segundos.');
 }
 
 void main() {

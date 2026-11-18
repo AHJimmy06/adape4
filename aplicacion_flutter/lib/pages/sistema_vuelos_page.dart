@@ -18,10 +18,12 @@ class SistemaVuelosPage extends StatefulWidget {
     required this.apiService,
     this.checkoutLauncher = abrirCheckout,
     this.routeBuilder,
+    this.vueloInicial,
   });
   final ApiService apiService;
   final CheckoutLauncher checkoutLauncher;
   final ConstructorRutaSistema? routeBuilder;
+  final Map<String, dynamic>? vueloInicial;
   @override
   State<SistemaVuelosPage> createState() => _SistemaVuelosPageState();
 }
@@ -33,6 +35,7 @@ class _SistemaVuelosPageState extends State<SistemaVuelosPage> {
   DateTimeRange? _rango;
   bool _busy = false;
   int _request = 0;
+  bool _vueloInicialAtendido = false;
   @override
   void initState() {
     super.initState();
@@ -76,12 +79,35 @@ class _SistemaVuelosPageState extends State<SistemaVuelosPage> {
           _pedidos = resultados[1];
           if (inicial) _aeropuertos = resultados[2];
         });
+        _abrirVueloInicial();
       }
     } catch (e) {
       if (mounted && request == _request) setState(() => _error = e.toString());
     } finally {
       if (mounted && request == _request) setState(() => _busy = false);
     }
+  }
+
+  void _abrirVueloInicial() {
+    final id = widget.vueloInicial?['id'];
+    if (_vueloInicialAtendido || id == null) return;
+    _vueloInicialAtendido = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final actuales = _vuelos.where(
+        (v) =>
+            v['id'] == id &&
+            v['activo'] != false &&
+            ((v['asientos_disponibles'] as num?)?.toInt() ?? 0) > 0,
+      );
+      if (actuales.isEmpty) {
+        setState(
+          () => _error = 'El vuelo seleccionado ya no está disponible. Elige otro vuelo del catálogo.',
+        );
+        return;
+      }
+      _reservar(actuales.first);
+    });
   }
 
   Future<void> _reservar(Map<String, dynamic> vuelo) async {
@@ -92,26 +118,77 @@ class _SistemaVuelosPageState extends State<SistemaVuelosPage> {
     );
     final continuar = await showDialog<bool>(
       context: context,
-      builder: (c) => AlertDialog(
-        title: const Text('Tu ruta AeroTech'),
-        content: SizedBox(
-          width: 650,
-          child: (widget.routeBuilder ?? ((_, r) => RutaAeropuertos(ruta: r)))(
-            c,
-            geo,
+      builder: (c) {
+        if (geo.esInternacional) {
+          return Dialog(
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: 16,
+            ),
+            child: SizedBox(
+              width: 1040,
+              height: (MediaQuery.sizeOf(c).height - 32)
+                  .clamp(0, 820)
+                  .toDouble(),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Tu ruta AeroTech',
+                      style: Theme.of(c).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 16),
+                    Expanded(
+                      child:
+                          (widget.routeBuilder ??
+                          ((_, r) => RutaAeropuertos(ruta: r)))(c, geo),
+                    ),
+                    const SizedBox(height: 16),
+                    Wrap(
+                      alignment: WrapAlignment.end,
+                      spacing: 12,
+                      runSpacing: 8,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(c, false),
+                          child: const Text('Volver'),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.pop(c, true),
+                          child: const Text('Elegir asientos'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+        return AlertDialog(
+          title: const Text('Tu ruta AeroTech'),
+          content: SizedBox(
+            width: 650,
+            child:
+                (widget.routeBuilder ?? ((_, r) => RutaAeropuertos(ruta: r)))(
+                  c,
+                  geo,
+                ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c, false),
-            child: const Text('Volver'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(c, true),
-            child: const Text('Elegir asientos'),
-          ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: const Text('Volver'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(c, true),
+              child: const Text('Elegir asientos'),
+            ),
+          ],
+        );
+      },
     );
     if (continuar != true || !mounted) return;
     await showDialog<void>(
@@ -327,6 +404,7 @@ class _SistemaVuelosPageState extends State<SistemaVuelosPage> {
                     pedido: p,
                     launcher: widget.checkoutLauncher,
                     onRefresh: () => _cargar(),
+                    onAbandonado: () => _cargar(),
                   ),
               ],
             ),

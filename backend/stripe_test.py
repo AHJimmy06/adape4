@@ -54,10 +54,19 @@ class StripeTest:
                           product_data={'name': 'AeroTech — ' + ', '.join(s['codigo'] for s in order['asientos'])}))])
         # The persisted request marker keeps recovery of pre-upgrade orders
         # byte-for-byte compatible with their original provider idempotency key.
-        if (order.get('solicitud') or {}).get('checkout_ui') == 'embedded':
+        ui = (order.get('solicitud') or {}).get('checkout_ui')
+        if ui in ('embedded', 'embedded_card_v2'):
             params.pop('success_url')
             params.pop('cancel_url')
             params.update(ui_mode='embedded_page', redirect_on_completion='never')
+        if ui == 'embedded_card_v2':
+            # Versioned options must not alter an existing idempotent payload.
+            # These flags are supported by the pinned Stripe v17 API types.
+            params.update(wallet_options={'link': {'display': 'never'}},
+                          billing_address_collection='auto',
+                          name_collection={'individual': {'enabled': False}, 'business': {'enabled': False}},
+                          phone_number_collection={'enabled': False},
+                          saved_payment_method_options={'payment_method_save': 'disabled'})
         # Provider maximum lifetime permits deterministic crash recovery. The
         # 35-minute business hold expires by verified Stripe.expire, never clock-only.
         return self.call(self.client.v1.checkout.sessions.create, params,

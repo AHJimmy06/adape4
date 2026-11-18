@@ -247,7 +247,7 @@ def register_system(app, repository, authenticated, administrator, stripe_provid
         if passengers is not None:
             selection['pasajeros'] = passengers
         try:
-            order = system.rpc('crear_pedido', g.usuario['id'], **selection, checkout_ui='embedded')
+            order = system.rpc('crear_pedido', g.usuario['id'], **selection, checkout_ui='embedded_card_v2')
         except ErrorAPI as error:
             if error.estado_http != 409:
                 raise
@@ -258,7 +258,17 @@ def register_system(app, repository, authenticated, administrator, stripe_provid
             if not previous:
                 raise
             previous = system.owned_order(previous['id'], g.usuario['id'])
-            if previous.get('solicitud') != selection:
+            original_selection = {k: v for k, v in (previous.get('solicitud') or {}).items() if k != 'checkout_ui'}
+            try:
+                # SQL stores labels lexically; HTTP orders row numbers naturally.
+                # Canonicalize both arrays without dropping any identity fields.
+                original_selection['asientos'] = seat_codes(original_selection.get('asientos'))
+                original_passengers = validar_pasajeros(original_selection, original_selection['asientos'])
+                if original_passengers is not None:
+                    original_selection['pasajeros'] = original_passengers
+            except ErrorAPI:
+                raise error
+            if original_selection != selection:
                 raise error
             order = previous
         order = system.checkout(order)

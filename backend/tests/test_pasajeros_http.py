@@ -69,7 +69,7 @@ def test_passenger_order_normalization_and_database_pricing(api):
 
 def test_legacy_omission_keeps_original_rpc_identity(api):
     assert post(api, BODY).status_code == 201
-    assert api[1].calls[0][2] == {**BODY, 'asientos': ['1C', '2A'], 'checkout_ui': 'embedded'}
+    assert api[1].calls[0][2] == {**BODY, 'asientos': ['1C', '2A'], 'checkout_ui': 'embedded_card_v2'}
 
 
 @pytest.mark.parametrize('passengers', [None, {}, [], PASSENGERS[:1], PASSENGERS + PASSENGERS[:1],

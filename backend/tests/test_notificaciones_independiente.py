@@ -72,6 +72,17 @@ def test_own_no_history_spoof_or_prepaid_notification_and_snapshot_authority(cor
     conn.execute(MIG.read_text(encoding='utf8'))
     assert conn.execute('select count(*) from at_notificaciones').fetchone()[0] == 0
     data = {'vuelo_id': FLIGHT, 'asientos': ['1C'], 'clave_operacion': str(uuid4()), 'correo': 'attacker@example.test', 'total_centavos': 1, 'estado': 'pagado'}
+
+    def persisted_state():
+        return tuple(conn.execute(f"select coalesce(jsonb_agg(to_jsonb(x) order by id),'[]'::jsonb) from {table} x").fetchone()[0]
+                     for table in ('at_pedidos', 'at_asientos', 'at_notificaciones'))
+
+    before_invalid = persisted_state()
+    r = client.post('/api/sistema/pedidos', headers=h[1], json=data)
+    assert r.status_code == 400, r.json
+    assert r.json['error']['codigo'] == 'datos_invalidos'
+    assert persisted_state() == before_invalid
+    data.pop('total_centavos')
     r = client.post('/api/sistema/pedidos', headers=h[1], json=data)
     assert r.status_code == 201, r.json
     order = r.json['pedido']

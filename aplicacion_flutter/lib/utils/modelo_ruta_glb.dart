@@ -83,8 +83,9 @@ List<double> _orientation(Vec3 forward, Vec3 radial) {
 Uint8List crearModeloRuta(
   Uint8List base,
   GeoPoint origin,
-  GeoPoint destination,
-) {
+  GeoPoint destination, {
+  double escalaAvion = .85,
+}) {
   final header = ByteData.sublistView(base);
   if (header.getUint32(0, Endian.little) != 0x46546c67 ||
       header.getUint32(4, Endian.little) != 2) {
@@ -199,6 +200,17 @@ Uint8List crearModeloRuta(
     normals.add(radial);
   }
   final primitive = gltf['meshes'][4]['primitives'][0];
+  final materials = gltf['materials'] as List;
+  primitive['material'] = materials.length;
+  materials.add({
+    'name': 'Selected route black',
+    'pbrMetallicRoughness': {
+      'baseColorFactor': [0, 0, 0, 1],
+      'metallicFactor': 0,
+      'roughnessFactor': 1,
+    },
+    'doubleSided': true,
+  });
   primitive['attributes']['POSITION'] = accessor(vertices, 'VEC3');
   primitive['attributes']['NORMAL'] = accessor(normals, 'VEC3');
   gltf['nodes'] = [
@@ -211,7 +223,7 @@ Uint8List crearModeloRuta(
     {
       'name': 'Selected aircraft',
       'mesh': 2,
-      'scale': [.85, .85, .85],
+      'scale': [escalaAvion, escalaAvion, escalaAvion],
       'translation': positions.first,
       'rotation': rotations.first,
     },

@@ -130,6 +130,9 @@ void main() {
           find.byKey(const ValueKey('compra-nombre')),
           'Ana Prueba',
         );
+      } else {
+        await t.tap(find.text('Ya tengo cuenta'));
+        await t.pumpAndSettle();
       }
       await t.enterText(
         find.byKey(const ValueKey('compra-correo')),
@@ -344,6 +347,9 @@ void main() {
     await t.pumpAndSettle();
     expect(find.text('Identifícate para continuar'), findsOneWidget);
     expect(compras, 0);
+    expect(find.byKey(const ValueKey('compra-nombre')), findsOneWidget);
+    await t.tap(find.text('Ya tengo cuenta'));
+    await t.pumpAndSettle();
     await t.enterText(
       find.byKey(const ValueKey('compra-correo')),
       'ana@example.test',

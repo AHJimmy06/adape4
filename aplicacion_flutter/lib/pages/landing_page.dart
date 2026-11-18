@@ -1,6 +1,10 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../services/api_service.dart';
+import '../services/sistema_api.dart';
+import '../widgets/tarjeta_destino.dart';
 import '../theme/aerotech_theme.dart';
 import '../widgets/globo_vuelos.dart';
 import 'login_page.dart';
@@ -19,7 +23,56 @@ class LandingPage extends StatefulWidget {
 }
 
 class _LandingPageState extends State<LandingPage> {
-  bool _navegando = false;
+  bool _navegando = false, _cargandoVuelos = false;
+  int _consultaVuelos = 0;
+  String? _errorVuelos;
+  List<Map<String, dynamic>> _vuelos = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _cargarVuelos();
+  }
+
+  @override
+  void didUpdateWidget(covariant LandingPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.apiService, widget.apiService)) _cargarVuelos();
+  }
+
+  Future<void> _cargarVuelos() async {
+    final consulta = ++_consultaVuelos;
+    setState(() {
+      _cargandoVuelos = true;
+      _errorVuelos = null;
+    });
+    try {
+      final vuelos = await SistemaApi(widget.apiService)
+          .lista('/vuelos', 'vuelos', requiereToken: false);
+      if (mounted && consulta == _consultaVuelos) {
+        setState(
+          () => _vuelos = vuelos
+              .where(
+                (v) =>
+                    v['activo'] != false &&
+                    ((v['asientos_disponibles'] as num?) ?? 0) > 0,
+              )
+              .toList(),
+        );
+      }
+    } catch (_) {
+      if (mounted && consulta == _consultaVuelos) {
+        setState(
+          () => _errorVuelos =
+              'No pudimos cargar los vuelos. Vuelve a intentarlo.',
+        );
+      }
+    } finally {
+      if (mounted && consulta == _consultaVuelos) {
+        setState(() => _cargandoVuelos = false);
+      }
+    }
+  }
 
   Future<void> _abrir({required bool registro}) async {
     if (_navegando) return;
@@ -38,136 +91,301 @@ class _LandingPageState extends State<LandingPage> {
     if (mounted) setState(() => _navegando = false);
   }
 
-  Future<void> _explorar() async {
+  Future<void> _explorar({Map<String, dynamic>? vueloInicial}) async {
     if (_navegando) return;
     setState(() => _navegando = true);
     await Navigator.push<void>(
       context,
       MaterialPageRoute<void>(
-        builder: (_) => SistemaVuelosPage(apiService: widget.apiService),
+        builder: (_) => SistemaVuelosPage(
+          apiService: widget.apiService,
+          vueloInicial: vueloInicial,
+        ),
       ),
     );
-    if (mounted) setState(() => _navegando = false);
+    if (mounted) {
+      setState(() => _navegando = false);
+      _cargarVuelos();
+    }
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AerotechTheme.background,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1200),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final amplio = constraints.maxWidth >= 900;
-                  return Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: amplio ? 48 : 20,
-                      vertical: amplio ? 24 : 20,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _cabecera(),
-                        const SizedBox(height: 24),
-                        const Divider(color: AerotechTheme.border),
-                        SizedBox(height: amplio ? 40 : 32),
-                        if (amplio)
-                          Row(
-                            children: [
-                              Expanded(child: _presentacion(amplio)),
-                              const SizedBox(width: 48),
-                              Expanded(child: _mundo()),
-                            ],
-                          )
-                        else ...[
-                          _presentacion(amplio),
-                          const SizedBox(height: 28),
-                          _mundo(),
-                        ],
-                        const SizedBox(height: 48),
-                        const Text(
-                          'Tu viaje, de principio a fin',
-                          style: TextStyle(
-                            fontSize: 28,
-                            height: 1.2,
-                            fontWeight: FontWeight.w700,
-                            color: AerotechTheme.navy,
-                          ),
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: AerotechTheme.background,
+    body: SafeArea(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final amplio = constraints.maxWidth >= 1000;
+          final margen = constraints.maxWidth >= 1600
+              ? 48.0
+              : amplio
+              ? 32.0
+              : 20.0;
+          return SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _hero(constraints, amplio, margen),
+                Padding(
+                  padding: EdgeInsets.fromLTRB(margen, 32, margen, 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'Tu viaje, de principio a fin',
+                        style: TextStyle(
+                          fontSize: 28,
+                          height: 1.2,
+                          fontWeight: FontWeight.w700,
+                          color: AerotechTheme.navy,
                         ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Un solo lugar para descubrir, reservar y organizar tu próximo destino.',
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Un solo lugar para descubrir, reservar y organizar tu próximo destino.',
+                        style: TextStyle(
+                          fontSize: 15,
+                          height: 1.5,
+                          color: AerotechTheme.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      SizedBox(
+                        key: const ValueKey('landing-experiencia'),
+                        width: double.infinity,
+                        child: _experiencia(amplio),
+                      ),
+                      const SizedBox(height: 40),
+                      _explorarVuelos(),
+                      const SizedBox(height: 32),
+                      const Divider(color: AerotechTheme.border),
+                      const Padding(
+                        padding: EdgeInsets.only(top: 18, bottom: 8),
+                        child: Text(
+                          'AeroTech · Tu próxima historia empieza con un vuelo.',
+                          textAlign: TextAlign.center,
                           style: TextStyle(
-                            fontSize: 15,
-                            height: 1.5,
                             color: AerotechTheme.textSecondary,
+                            fontSize: 12,
                           ),
                         ),
-                        const SizedBox(height: 24),
-                        _experiencia(amplio),
-                        const SizedBox(height: 28),
-                        const Divider(color: AerotechTheme.border),
-                        const Padding(
-                          padding: EdgeInsets.only(top: 18, bottom: 8),
-                          child: Text(
-                            'AeroTech · Tu próxima historia empieza con un vuelo.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: AerotechTheme.textSecondary,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
+          );
+        },
+      ),
+    ),
+  );
+
+  Widget _hero(BoxConstraints constraints, bool amplio, double margen) {
+    final escala = MediaQuery.textScalerOf(context).scale(1);
+    final alto = math.max(
+      constraints.maxHeight,
+      760.0 + math.max(0.0, escala - 1) * 460,
+    );
+    final cabecera = <Widget>[
+      _cabecera(),
+      const SizedBox(height: 24),
+      const Divider(color: AerotechTheme.border),
+      SizedBox(height: amplio ? 24 : 28),
+    ];
+    if (amplio) {
+      return SizedBox(
+        key: const ValueKey('landing-hero'),
+        height: alto,
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: margen, vertical: 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ...cabecera,
+              Expanded(
+                child: Center(
+                  child: Row(
+                    children: [
+                      Expanded(child: _presentacion(true)),
+                      const SizedBox(width: 48),
+                      Expanded(
+                        child: _mundo(maximo: math.min(720, alto - 190)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
+        ),
+      );
+    }
+    return ConstrainedBox(
+      key: const ValueKey('landing-hero'),
+      constraints: BoxConstraints(minHeight: constraints.maxHeight),
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: margen, vertical: 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ...cabecera,
+            _presentacion(false),
+            const SizedBox(height: 28),
+            _mundo(),
+          ],
         ),
       ),
     );
   }
 
-  Widget _cabecera() => Row(
+  Widget _explorarVuelos() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: AerotechTheme.navy,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: const Icon(
-          Icons.flight_takeoff_rounded,
-          color: AerotechTheme.cyan,
-          size: 24,
-        ),
+      Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 16,
+        runSpacing: 12,
+        children: [
+          const Text(
+            'Explorar vuelos',
+            style: TextStyle(
+              fontSize: 28,
+              height: 1.2,
+              fontWeight: FontWeight.w700,
+              color: AerotechTheme.navy,
+            ),
+          ),
+          OutlinedButton.icon(
+            key: const ValueKey('landing-buscar-mas'),
+            onPressed: _navegando ? null : () => _explorar(),
+            icon: const Icon(Icons.arrow_forward),
+            label: const Text('Buscar más'),
+          ),
+        ],
       ),
-      const SizedBox(width: 10),
-      const Expanded(
-        child: Text(
-          'AeroTech',
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 22,
-            letterSpacing: -0.8,
+      const SizedBox(height: 8),
+      const Text(
+        'Salidas disponibles, precios claros y un viaje que empieza a tu manera.',
+        style: TextStyle(color: AerotechTheme.textSecondary),
+      ),
+      const SizedBox(height: 24),
+      if (_cargandoVuelos)
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 32),
+          child: Column(
+            children: [
+              LinearProgressIndicator(),
+              SizedBox(height: 12),
+              Text('Buscando tu próximo destino…'),
+            ],
+          ),
+        )
+      else if (_errorVuelos != null)
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(_errorVuelos!),
+                const SizedBox(height: 12),
+                TextButton.icon(
+                  key: const ValueKey('landing-reintentar-vuelos'),
+                  onPressed: _cargarVuelos,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Volver a intentar'),
+                ),
+              ],
+            ),
+          ),
+        )
+      else if (_vuelos.isEmpty)
+        const Card(
+          child: Padding(
+            padding: EdgeInsets.all(28),
+            child: Text('Pronto habrá nuevos destinos para descubrir.'),
+          ),
+        )
+      else
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final cantidad = math.max(
+              1,
+              ((constraints.maxWidth + 16) / 316).floor(),
+            );
+            final visibles = _vuelos.take(cantidad).toList();
+            return IntrinsicHeight(
+              child: Row(
+                key: const ValueKey('landing-fila-vuelos'),
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (var i = 0; i < visibles.length; i++) ...[
+                    if (i > 0) const SizedBox(width: 16),
+                    Expanded(
+                      child: TarjetaDestino(
+                        key: ValueKey('landing-vuelo-${visibles[i]['id']}'),
+                        vuelo: visibles[i],
+                        onReservar: _navegando
+                            ? null
+                            : () => _explorar(vueloInicial: visibles[i]),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            );
+          },
+        ),
+    ],
+  );
+
+  Widget _cabecera() => LayoutBuilder(
+    builder: (context, constraints) => Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
             color: AerotechTheme.navy,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: const Icon(
+            Icons.flight_takeoff_rounded,
+            color: AerotechTheme.cyan,
+            size: 24,
           ),
         ),
-      ),
-      TextButton(
-        onPressed: () => _abrir(registro: false),
-        style: TextButton.styleFrom(
-          minimumSize: const Size(0, 48),
-          textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        const SizedBox(width: 10),
+        const Expanded(
+          child: Text(
+            'AeroTech',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 22,
+              letterSpacing: -0.8,
+              color: AerotechTheme.navy,
+            ),
+          ),
         ),
-        child: const Text('Iniciar sesión'),
-      ),
-    ],
+        ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: math.min(280, constraints.maxWidth * .42),
+          ),
+          child: TextButton(
+            onPressed: () => _abrir(registro: false),
+            style: TextButton.styleFrom(
+              minimumSize: const Size(0, 48),
+              textStyle: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            child: const Text('Iniciar sesión'),
+          ),
+        ),
+      ],
+    ),
   );
 
   Widget _presentacion(bool amplio) => Column(
@@ -228,7 +446,7 @@ class _LandingPageState extends State<LandingPage> {
 
   Widget _acciones() => LayoutBuilder(
     builder: (context, constraints) {
-      final ancho = constraints.maxWidth < 350
+      final ancho = constraints.maxWidth < 420
           ? constraints.maxWidth
           : ((constraints.maxWidth - 12) / 2).clamp(0.0, 196.0).toDouble();
       final forma = RoundedRectangleBorder(
@@ -247,10 +465,10 @@ class _LandingPageState extends State<LandingPage> {
         runSpacing: 12,
         children: [
           FilledButton.icon(
-            key: const ValueKey('landing-crear-cuenta'),
-            onPressed: () => _abrir(registro: true),
+            key: const ValueKey('landing-explorar-vuelos'),
+            onPressed: _navegando ? null : () => _explorar(),
             icon: const Icon(Icons.arrow_forward_rounded, size: 20),
-            label: const Text('Crear cuenta'),
+            label: const Text('Explorar vuelos'),
             style: FilledButton.styleFrom(
               fixedSize: tamano,
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -259,9 +477,10 @@ class _LandingPageState extends State<LandingPage> {
             ),
           ),
           OutlinedButton.icon(
-            onPressed: _explorar,
+            key: const ValueKey('landing-crear-cuenta'),
+            onPressed: _navegando ? null : () => _abrir(registro: true),
             icon: const Icon(Icons.travel_explore_rounded, size: 20),
-            label: const Text('Explorar vuelos'),
+            label: const Text('Crear cuenta'),
             style: OutlinedButton.styleFrom(
               fixedSize: tamano,
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -276,13 +495,14 @@ class _LandingPageState extends State<LandingPage> {
     },
   );
 
-  Widget _mundo() {
+  Widget _mundo({double maximo = 440}) {
     final estatico = _navegando || ModalRoute.isCurrentOf(context) == false;
     final movimientoReducido = MediaQuery.disableAnimationsOf(context);
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 440),
+          constraints: BoxConstraints(maxWidth: maximo),
           child: AspectRatio(
             aspectRatio: 1,
             child: Stack(
