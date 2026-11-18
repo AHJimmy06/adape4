@@ -22,3 +22,11 @@ services:
         sync: false
       - key: PUBLIC_API_URL
         value: https://adape4-reservas-vuelos-api.onrender.com
+      - key: MAILTRAP_ENABLED
+        value: "true"
+      - key: MAILTRAP_API_TOKEN
+        sync: false
+      - key: MAILTRAP_INBOX_ID
+        sync: false
+      - key: MAILTRAP_FROM_EMAIL
+        value: reservas@aerotech.example

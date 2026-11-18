@@ -152,6 +152,12 @@ class RepositorioSupabase:
             raise
         return self._primero(respuesta)
 
+    def notificaciones_operar(self, accion, datos):
+        """Cola privada de correos: se ejecuta con la clave de servicio."""
+        return self.cliente.rpc('notificaciones_operar', {
+            'p_accion': accion, 'p_datos': datos,
+        }).execute().data
+
     def sistema_operar(self, accion, usuario_id, datos):
         try:
             return self.cliente.rpc('sistema_operar', {'p_accion': accion, 'p_usuario': usuario_id, 'p_datos': datos}).execute().data

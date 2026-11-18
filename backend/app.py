@@ -225,6 +225,12 @@ def create_app(repository=None, jwt_secret=None, stripe_provider=None):
 
     from backend.sistema_http import register_system
     register_system(app, repository, requiere_autenticacion, requiere_administrador, stripe_provider)
+    from backend.notificaciones import ClienteMailtrap, DespachadorCorreos
+    cliente_correo = ClienteMailtrap.desde_entorno(os.environ)
+    if cliente_correo is not None:
+        despachador = DespachadorCorreos(repository, cliente_correo)
+        app.extensions['notificaciones'] = despachador
+        despachador.iniciar()
     return app
 
 
