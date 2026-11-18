@@ -443,7 +443,11 @@ class _LandingPageState extends State<LandingPage> {
           'El mundo está\nmás cerca.',
           style: TextStyle(
             color: Colors.white,
-            fontSize: amplio ? 84 : 48,
+            fontSize: amplio
+                ? (MediaQuery.sizeOf(context).width * .045)
+                      .clamp(58.0, 84.0)
+                      .toDouble()
+                : 48,
             height: 1.06,
             letterSpacing: amplio ? -2 : -1.2,
             fontWeight: FontWeight.w800,
