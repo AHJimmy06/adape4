@@ -55,22 +55,39 @@ class StripeTest:
         # The persisted request marker keeps recovery of pre-upgrade orders
         # byte-for-byte compatible with their original provider idempotency key.
         ui = (order.get('solicitud') or {}).get('checkout_ui')
-        if ui in ('embedded', 'embedded_card_v2'):
+        if ui in ('embedded', 'embedded_card_v2', 'embedded_card_v3'):
             params.pop('success_url')
             params.pop('cancel_url')
             params.update(ui_mode='embedded_page', redirect_on_completion='never')
-        if ui == 'embedded_card_v2':
+        if ui in ('embedded_card_v2', 'embedded_card_v3'):
             # Versioned options must not alter an existing idempotent payload.
             # These flags are supported by the pinned Stripe v17 API types.
             params.update(wallet_options={'link': {'display': 'never'}},
                           billing_address_collection='auto',
-                          name_collection={'individual': {'enabled': False}, 'business': {'enabled': False}},
                           phone_number_collection={'enabled': False},
                           saved_payment_method_options={'payment_method_save': 'disabled'})
+        if ui == 'embedded_card_v2':
+            # Recover existing keys first, including successful responses not yet linked.
+            params['name_collection'] = {'individual': {'enabled': False}, 'business': {'enabled': False}}
         # Provider maximum lifetime permits deterministic crash recovery. The
         # 35-minute business hold expires by verified Stripe.expire, never clock-only.
-        return self.call(self.client.v1.checkout.sessions.create, params,
-                         options={'idempotency_key': 'aerotech-checkout-' + order['id']})
+        key = 'aerotech-checkout-' + order['id']
+        try:
+            return self.call(self.client.v1.checkout.sessions.create, params,
+                             options={'idempotency_key': key})
+        except ErrorAPI as error:
+            cause = error.__cause__
+            rejected_names = ('If specifying name_collection, you must have either '
+                              '`name_collection[individual][enabled] = true` or '
+                              '`name_collection[business][enabled] = true`.')
+            if (ui != 'embedded_card_v2' or getattr(cause, 'http_status', None) != 400
+                    or getattr(cause, 'user_message', None) != rejected_names):
+                raise
+            # Only this confirmed validation rejection proves no Checkout was created.
+            # A fixed repair key also recovers safely after a lost repair response.
+            params.pop('name_collection')
+            return self.call(self.client.v1.checkout.sessions.create, params,
+                             options={'idempotency_key': key + '-name-fix-v3'})
 
     def retrieve(self, session_id):
         self.ready()
