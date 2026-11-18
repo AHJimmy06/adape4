@@ -163,6 +163,15 @@ class RepositorioSupabase:
             return self.cliente.rpc('sistema_operar', {'p_accion': accion, 'p_usuario': usuario_id, 'p_datos': datos}).execute().data
         except Exception as error:
             message = str(error)
+            schedule_conflicts = (
+                ('CONFLICTO: El avión ya tiene otro vuelo en ese horario', 'avion_ocupado',
+                 'El avión ya tiene otro vuelo en ese horario. Elige un intervalo libre.'),
+                ('CONFLICTO: El aeropuerto de destino no dispone de cupos de aterrizaje en esa franja',
+                 'aeropuerto_sin_cupo', 'El aeropuerto de destino no dispone de cupos de aterrizaje en esa franja. Elige otra hora de llegada.'),
+            )
+            for marker, code, public_message in schedule_conflicts:
+                if marker in message:
+                    raise ErrorAPI(code, public_message, 409) from error
             categories = [('PROHIBIDO:', 'acceso_denegado', 403), ('NO_ENCONTRADO:', 'no_encontrado', 404),
                           ('CONFLICTO:', 'conflicto', 409), ('INVALIDO:', 'datos_invalidos', 400)]
             for marker, code, status in categories:

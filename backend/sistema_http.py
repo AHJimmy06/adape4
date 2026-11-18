@@ -146,6 +146,8 @@ def register_system(app, repository, authenticated, administrator, stripe_provid
     register_programaciones(app, repository, administrator)
     system = Sistema(repository, stripe_provider)
     app.extensions['sistema'] = system
+    from backend.disponibilidad_aviones import register_aircraft_availability
+    register_aircraft_availability(app, system, administrator)
     singular = {'aeropuertos': 'aeropuerto', 'aviones': 'avion', 'rutas': 'ruta', 'vuelos': 'vuelo'}
 
     def catalog_list(resource):
