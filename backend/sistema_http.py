@@ -247,7 +247,7 @@ def register_system(app, repository, authenticated, administrator, stripe_provid
         if passengers is not None:
             selection['pasajeros'] = passengers
         try:
-            order = system.rpc('crear_pedido', g.usuario['id'], **selection, checkout_ui='embedded_card_v3')
+            order = system.rpc('crear_pedido', g.usuario['id'], **selection, checkout_ui='embedded_card_v4')
         except ErrorAPI as error:
             if error.estado_http != 409:
                 raise
