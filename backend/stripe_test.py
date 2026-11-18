@@ -55,18 +55,23 @@ class StripeTest:
         # The persisted request marker keeps recovery of pre-upgrade orders
         # byte-for-byte compatible with their original provider idempotency key.
         ui = (order.get('solicitud') or {}).get('checkout_ui')
-        if ui in ('embedded', 'embedded_card_v2', 'embedded_card_v3', 'embedded_card_v4'):
+        if ui in ('embedded', 'embedded_card_v2', 'embedded_card_v3', 'embedded_card_v4', 'embedded_card_v5'):
             params.pop('success_url')
             params.pop('cancel_url')
             params.update(ui_mode='embedded_page', redirect_on_completion='never')
-        if ui in ('embedded_card_v2', 'embedded_card_v3', 'embedded_card_v4'):
+        if ui in ('embedded_card_v2', 'embedded_card_v3', 'embedded_card_v4', 'embedded_card_v5'):
             # Versioned options must not alter an existing idempotent payload.
             # These flags are supported by the pinned Stripe v17 API types.
             params.update(wallet_options={'link': {'display': 'never'}},
                           billing_address_collection='auto',
                           phone_number_collection={'enabled': False})
-            if ui != 'embedded_card_v4':
+            if ui in ('embedded_card_v2', 'embedded_card_v3'):
                 params['saved_payment_method_options'] = {'payment_method_save': 'disabled'}
+        if ui == 'embedded_card_v5':
+            email = order.get('checkout_correo')
+            if not isinstance(email, str) or not email.strip():
+                raise ErrorAPI('correo_no_disponible', 'No se pudo obtener el correo de tu cuenta para el pago.', 409)
+            params['customer_email'] = email.strip()
         if ui == 'embedded_card_v2':
             # Recover existing keys first, including successful responses not yet linked.
             params['name_collection'] = {'individual': {'enabled': False}, 'business': {'enabled': False}}

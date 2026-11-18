@@ -460,7 +460,7 @@ class _PedidoSistemaState extends State<PedidoSistema> {
               borderRadius: BorderRadius.circular(20),
             ),
             child: SizedBox(
-              width: 1080,
+              width: 580,
               height: (viewport.height - (viewport.width < 600 ? 16 : 48))
                   .clamp(240, 900),
               child: Column(

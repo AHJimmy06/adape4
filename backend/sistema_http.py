@@ -23,7 +23,7 @@ class Sistema:
 
     @staticmethod
     def public_order(order):
-        hidden = {'usuario_id', 'session_id', 'payment_intent', 'solicitud', 'incidencia', 'client_secret'}
+        hidden = {'usuario_id', 'session_id', 'payment_intent', 'solicitud', 'incidencia', 'client_secret', 'checkout_correo'}
         result = {k: v for k, v in order.items() if k not in hidden}
         result.update(moneda='usd', mensaje=order.get('incidencia'))
         return result
@@ -38,6 +38,13 @@ class Sistema:
             if (datetime.now(timezone.utc) - created).total_seconds() > 23 * 3600:
                 self.rpc('incidencia', order['usuario_id'], id=order['id'])
                 raise ErrorAPI('pago_en_revision', 'La recuperación excedió la ventana segura de idempotencia; requiere revisión.', 409)
+            # Only the new payload version uses the authenticated account email.
+            # Older orders must preserve their original Stripe idempotent request.
+            if (order.get('solicitud') or {}).get('checkout_ui') == 'embedded_card_v5':
+                account = self.repository.buscar_usuario_por_id(order['usuario_id'])
+                if not account or not isinstance(account.get('correo'), str) or not account['correo'].strip():
+                    raise ErrorAPI('correo_no_disponible', 'No se pudo obtener el correo de tu cuenta para el pago.', 409)
+                order = dict(order, checkout_correo=account['correo'].strip())
             session = self.provider.checkout(order)
             self.verify_session(order, session, binding=False)
             order = self.rpc('vincular', order['usuario_id'], id=order['id'], session_id=session['id'],
@@ -247,7 +254,7 @@ def register_system(app, repository, authenticated, administrator, stripe_provid
         if passengers is not None:
             selection['pasajeros'] = passengers
         try:
-            order = system.rpc('crear_pedido', g.usuario['id'], **selection, checkout_ui='embedded_card_v4')
+            order = system.rpc('crear_pedido', g.usuario['id'], **selection, checkout_ui='embedded_card_v5')
         except ErrorAPI as error:
             if error.estado_http != 409:
                 raise
