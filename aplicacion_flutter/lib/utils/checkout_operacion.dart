@@ -16,9 +16,31 @@ String dinero(dynamic cents) {
 
 class CheckoutOperacion {
   String? _payload, _key;
-  String preparar(String vuelo, List<String> codes) {
+  String preparar(
+    String vuelo,
+    List<String> codes, {
+    List<Map<String, dynamic>>? pasajeros,
+  }) {
     final sorted = [...codes]..sort();
-    final payload = jsonEncode([vuelo, sorted]);
+    final normalizados =
+        pasajeros?.map((p) {
+          final correo = p['correo_usuario']?.toString().trim().toLowerCase();
+          return {
+            'asiento': p['asiento'],
+            'correo_usuario': correo == null || correo.isEmpty ? null : correo,
+            'categoria': correo != null && correo.isNotEmpty
+                ? 'adulto'
+                : p['categoria'] ?? 'adulto',
+            'maletas_adicionales': p['maletas_adicionales'] ?? 0,
+          };
+        }).toList()?..sort(
+          (a, b) => a['asiento'].toString().compareTo(b['asiento'].toString()),
+        );
+    final payload = jsonEncode([
+      vuelo,
+      sorted,
+      if (pasajeros != null) normalizados,
+    ]);
     if (payload != _payload) {
       _payload = payload;
       _key = nuevaClaveOperacion();

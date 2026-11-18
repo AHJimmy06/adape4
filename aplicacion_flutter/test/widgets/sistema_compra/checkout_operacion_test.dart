@@ -31,4 +31,52 @@ void main() {
     expect(op.preparar('v', ['1C']), isNot(a));
     expect(dinero(101), 'USD 1.01');
   });
+  test(
+    'extras canonicalizados preservan reintentos y cambian la operación',
+    () {
+      final op = CheckoutOperacion();
+      final pasajeros = [
+        {'asiento': '1B', 'categoria': 'nino', 'maletas_adicionales': 1},
+        {
+          'asiento': '1A',
+          'categoria': 'adulto',
+          'correo_usuario': ' ANA@EXAMPLE.TEST ',
+          'maletas_adicionales': 0,
+        },
+      ];
+      final primera = op.preparar('v', ['1A', '1B'], pasajeros: pasajeros);
+      expect(
+        op.preparar(
+          'v',
+          ['1B', '1A'],
+          pasajeros: [
+            {
+              'asiento': '1A',
+              'correo_usuario': 'ana@example.test',
+              'maletas_adicionales': 0,
+              'categoria': 'adulto',
+            },
+            {
+              'asiento': '1B',
+              'correo_usuario': null,
+              'categoria': 'nino',
+              'maletas_adicionales': 1,
+            },
+          ],
+        ),
+        primera,
+      );
+      expect(
+        op.preparar(
+          'v',
+          ['1A', '1B'],
+          pasajeros: [
+            {...pasajeros[0], 'maletas_adicionales': 2},
+            pasajeros[1],
+          ],
+        ),
+        isNot(primera),
+      );
+    },
+  );
 }

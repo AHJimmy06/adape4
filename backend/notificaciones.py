@@ -56,15 +56,39 @@ def _horario_correo(vuelo, momento, extremo):
     return ' · '.join(p for p in (texto, zona) if p)
 
 
+def _detalle_pasajero(asiento):
+    if isinstance(asiento, str):
+        return ''
+    details = []
+    passenger = asiento.get('pasajero') or {}
+    if passenger:
+        category = {'adulto': 'Adulto', 'adulto_mayor': 'Adulto mayor', 'nino': 'Niño'}.get(
+            passenger.get('categoria'), 'Adulto')
+        name = passenger.get('nombre') or ''
+        details.append('Pasajero: ' + ' · '.join(str(value) for value in (name, category) if value))
+    if 'tarifa_total_centavos' in asiento:
+        details.append('Tarifa del asiento: ' + _importe(asiento, 'tarifa_total_centavos'))
+    baggage = asiento.get('equipaje') or {}
+    if baggage:
+        details.append(f"Equipaje adicional: {baggage['cantidad']} maletas · "
+                       f"{_importe(baggage, 'total_centavos')} "
+                       f"({_importe(baggage, 'precio_unitario_centavos')} por maleta, IVA incluido)")
+        details.append(f"Equipaje: base {_importe(baggage, 'subtotal_centavos')} · "
+                       f"IVA {_importe(baggage, 'iva_centavos')}")
+    if (passenger or baggage) and 'total_centavos' in asiento:
+        details.append('Total del asiento: ' + _importe(asiento, 'total_centavos'))
+    return '\n'.join(details)
+
+
 def _contenido(datos):
     vuelo = datos['vuelo']
     asientos = []
     for asiento in datos['asientos']:
         if isinstance(asiento, str):
-            asientos.append((asiento, 'Asiento confirmado'))
+            asientos.append((asiento, 'Asiento confirmado', ''))
         else:
             clase = asiento.get('clase_nombre') or asiento.get('clase_codigo') or 'Clase del vuelo'
-            asientos.append((str(asiento['codigo']), str(clase)))
+            asientos.append((str(asiento['codigo']), str(clase), _detalle_pasajero(asiento)))
     origen, destino = _aeropuerto(vuelo, 'origen'), _aeropuerto(vuelo, 'destino')
     salida = _horario_correo(vuelo, 'salida', 'origen')
     llegada = _horario_correo(vuelo, 'llegada', 'destino')
@@ -87,13 +111,16 @@ def _contenido(datos):
     texto = '\n\n'.join([
         'Gracias por confiar en AeroTech', saludo, 'Gracias por tu compra', aviso,
         'Comprobante de compra\n' + '\n'.join(f'{k}: {v}' for k, v in detalles),
-        'Asientos confirmados\n' + '\n'.join(f'{a} · {c}' for a, c in asientos),
+        'Asientos confirmados\n' + '\n'.join(f'{a} · {c}' + (f'\n{d}' if d else '') for a, c, d in asientos),
         nota, sandbox,
     ])
     filas_asientos = ''.join(
         '<tr><td style="padding:12px;border-bottom:1px solid #dce7ef;color:#102d4b;font-weight:bold">'
         f'{escape(a)}</td><td style="padding:12px;border-bottom:1px solid #dce7ef;color:#526784">'
-        f'{escape(c)}</td></tr>' for a, c in asientos
+        f'{escape(c)}</td></tr>' +
+        (f'<tr><td colspan="2" style="padding:8px 12px 16px;font-size:13px;line-height:20px;color:#526784">'
+         f'{escape(d).replace(chr(10), "<br>")}</td></tr>' if d else '')
+        for a, c, d in asientos
     )
     # Tablas e instrucciones inline: no dependemos de imágenes, scripts ni CSS externo.
     html = f'''<!doctype html>

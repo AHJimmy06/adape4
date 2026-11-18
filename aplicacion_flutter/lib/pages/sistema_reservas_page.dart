@@ -1,3 +1,5 @@
+import '../widgets/sistema_compra/detalle_pasajero.dart';
+
 import 'package:flutter/material.dart';
 
 import '../services/api_service.dart';
@@ -275,6 +277,7 @@ class _SistemaReservasPageState extends State<SistemaReservasPage> {
                   ),
               ],
             ),
+            for (final s in seats) DetallePasajero(asiento: s),
             for (final c in mapas(r['cancelaciones']))
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6),
@@ -446,6 +449,12 @@ class _CancelacionSistemaDialogState extends State<CancelacionSistemaDialog> {
           Text(
             'Selecciona de 1 a ${legacy ? max : _activos.length} asiento(s) activos. Reembolso TEST del 100%, sin penalización.',
           ),
+          if (_activos.any(
+            (s) => ((s['equipaje'] as Map?)?['cantidad'] as num? ?? 0) > 0,
+          ))
+            const Text(
+              'El reembolso de cada asiento incluye su equipaje adicional.',
+            ),
           if (legacy)
             Row(
               children: [
@@ -468,7 +477,13 @@ class _CancelacionSistemaDialogState extends State<CancelacionSistemaDialog> {
             for (final s in _activos)
               CheckboxListTile(
                 title: Text('${s['codigo']} · ${s['clase_codigo']}'),
-                subtitle: Text(dinero(s['total_centavos'])),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(dinero(s['total_centavos'])),
+                    DetallePasajero(asiento: s),
+                  ],
+                ),
                 value: _selected.contains(s['codigo']),
                 onChanged: _busy || _sent
                     ? null

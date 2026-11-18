@@ -8,6 +8,7 @@ from backend.sistema_validacion import (identifier, integer, invalid, object_bod
                                          seat_codes, validate_catalog)
 from backend.stripe_test import StripeTest
 from backend.vuelos_programacion import register_programaciones
+from backend.pasajeros import validar_pasajeros
 
 
 class Sistema:
@@ -242,6 +243,9 @@ def register_system(app, repository, authenticated, administrator, stripe_provid
         data = object_body(request.get_json(silent=True))
         selection = dict(vuelo_id=identifier(data.get('vuelo_id')), asientos=seat_codes(data.get('asientos')),
                          clave_operacion=identifier(data.get('clave_operacion')))
+        passengers = validar_pasajeros(data, selection['asientos'])
+        if passengers is not None:
+            selection['pasajeros'] = passengers
         try:
             order = system.rpc('crear_pedido', g.usuario['id'], **selection, checkout_ui='embedded')
         except ErrorAPI as error:
@@ -334,10 +338,27 @@ def register_system(app, repository, authenticated, administrator, stripe_provid
         for key in ('id', 'creado_en', 'estado', 'cantidad', 'cantidad_activa', 'subtotal_centavos', 'iva_centavos', 'total_centavos', 'reembolsado_centavos'):
             ET.SubElement(root, key).text = str(data[key])
         seats_node = ET.SubElement(root, 'asientos')
+
+        def write_fields(parent, fields):
+            for key, value in fields.items():
+                if key in ('usuario_id', 'pedido_id', 'payment_intent', 'client_secret'):
+                    continue
+                child = ET.SubElement(parent, key)
+                if isinstance(value, dict):
+                    write_fields(child, value)
+                elif isinstance(value, list):
+                    for entry in value:
+                        element = ET.SubElement(child, 'item')
+                        if isinstance(entry, dict):
+                            write_fields(element, entry)
+                        else:
+                            element.text = str(entry)
+                elif value is not None:
+                    child.text = str(value).lower() if isinstance(value, bool) else str(value)
+
         for item in data['asientos']:
             node = ET.SubElement(seats_node, 'asiento')
-            for key, value in item.items():
-                ET.SubElement(node, key).text = str(value)
+            write_fields(node, item)
         ET.SubElement(root, 'nota').text = 'Comprobante académico; no es documento fiscal ni factura electrónica.'
         ET.indent(root)
         return Response(ET.tostring(root, encoding='utf-8', xml_declaration=True), content_type='application/xml; charset=utf-8')

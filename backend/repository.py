@@ -163,6 +163,9 @@ class RepositorioSupabase:
             return self.cliente.rpc('sistema_operar', {'p_accion': accion, 'p_usuario': usuario_id, 'p_datos': datos}).execute().data
         except Exception as error:
             message = str(error)
+            if 'INVALIDO: Usuario asignado inexistente o inactivo' in message:
+                raise ErrorAPI('usuario_asignado_no_disponible',
+                               'El correo asignado no corresponde a un usuario activo. Revisa los datos del pasajero.', 400) from error
             schedule_conflicts = (
                 ('CONFLICTO: El avión ya tiene otro vuelo en ese horario', 'avion_ocupado',
                  'El avión ya tiene otro vuelo en ese horario. Elige un intervalo libre.'),

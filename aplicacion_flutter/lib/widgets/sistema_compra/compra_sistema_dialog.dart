@@ -7,6 +7,8 @@ import '../../services/api_service.dart';
 import '../../utils/checkout_operacion.dart';
 import '../../utils/checkout_launcher.dart';
 import 'cabina_sistema.dart';
+import 'pasajeros_asientos.dart';
+import 'detalle_pasajero.dart';
 import 'stripe_embebido.dart';
 import 'autenticacion_compra.dart';
 import '../../theme/aerotech_theme.dart';
@@ -35,6 +37,7 @@ class CompraSistemaDialog extends StatefulWidget {
 class _CompraSistemaDialogState extends State<CompraSistemaDialog> {
   Map<String, dynamic>? _mapa, _pedido;
   final _seleccion = <String>{};
+  final _pasajeros = <String, PasajeroAsiento>{};
   final _operacion = CheckoutOperacion();
   bool _busy = false;
   String? _error;
@@ -69,9 +72,38 @@ class _CompraSistemaDialogState extends State<CompraSistemaDialog> {
     }
   }
 
+  Map<String, int> get _tarifasConIva => {
+    for (final s in mapas(_mapa?['asientos']))
+      if (_seleccion.contains(s['codigo']))
+        s['codigo'].toString():
+            (s['total_centavos'] as num?)?.toInt() ??
+            ((s['precio_centavos'] as num?)?.toInt() ?? 0) +
+                ((((s['precio_centavos'] as num?)?.toInt() ?? 0) * 15 + 50) ~/
+                    100),
+  };
+
   Future<void> _comprar({bool reautenticar = true}) async {
     final codes = _seleccion.toList()..sort();
     if (codes.isEmpty || _busy) return;
+    for (final codigo in codes) {
+      final pasajero = _pasajeros.putIfAbsent(codigo, PasajeroAsiento.new);
+      if (pasajero.error != null) {
+        setState(() => _error = 'Asiento $codigo: ${pasajero.error}');
+        return;
+      }
+    }
+    final total =
+        _tarifasConIva.values.fold(0, (a, b) => a + b) +
+        _pasajeros.values.fold(0, (a, p) => a + p.equipajeCentavos);
+    if (total > 99999999) {
+      setState(
+        () => _error = 'El importe supera el máximo técnico permitido por Stripe. Reduce el equipaje o divide la compra.',
+      );
+      return;
+    }
+    final pasajeros = [
+      for (final codigo in codes) _pasajeros[codigo]!.datos(codigo),
+    ];
     setState(() {
       _busy = true;
       _error = null;
@@ -95,6 +127,7 @@ class _CompraSistemaDialogState extends State<CompraSistemaDialog> {
         if (codes.any((c) => !libres.contains(c))) {
           setState(() {
             _seleccion.removeWhere((c) => !libres.contains(c));
+            _pasajeros.removeWhere((c, _) => !_seleccion.contains(c));
             _error = 'La disponibilidad cambió mientras ingresabas. Conservamos los asientos libres; revisa tu selección.';
           });
           _operacion.limpiar();
@@ -102,12 +135,17 @@ class _CompraSistemaDialogState extends State<CompraSistemaDialog> {
           return;
         }
       }
-      final key = _operacion.preparar(widget.vuelo['id'].toString(), codes);
+      final key = _operacion.preparar(
+        widget.vuelo['id'].toString(),
+        codes,
+        pasajeros: pasajeros,
+      );
       final data = await widget.api.post(
         '/pedidos',
         body: {
           'vuelo_id': widget.vuelo['id'],
           'asientos': codes,
+          'pasajeros': pasajeros,
           'clave_operacion': key,
         },
       );
@@ -149,6 +187,7 @@ class _CompraSistemaDialogState extends State<CompraSistemaDialog> {
           ),
         );
         _seleccion.clear();
+        _pasajeros.clear();
         _operacion.limpiar();
         widget.onRefresh();
         await _cargar();
@@ -206,9 +245,21 @@ class _CompraSistemaDialogState extends State<CompraSistemaDialog> {
             seleccionados: _seleccion,
             bloqueada: _busy,
             onChanged: (code) => setState(() {
-              if (!_seleccion.add(code)) _seleccion.remove(code);
+              if (!_seleccion.add(code)) {
+                _seleccion.remove(code);
+                _pasajeros.remove(code);
+              } else {
+                _pasajeros[code] = PasajeroAsiento();
+              }
               _operacion.limpiar();
             }),
+          ),
+        if (_pedido == null && _seleccion.isNotEmpty)
+          PasajerosAsientos(
+            configuraciones: _pasajeros,
+            tarifasCentavos: _tarifasConIva,
+            bloqueado: _busy,
+            onChanged: () => setState(() => _error = null),
           ),
         if (_mapa == null && !_busy)
           TextButton(
@@ -522,6 +573,8 @@ class _PedidoSistemaState extends State<PedidoSistema> {
                 ),
             ],
           ),
+          for (final seat in mapas(_pedido['asientos']))
+            DetallePasajero(asiento: seat),
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(20),
