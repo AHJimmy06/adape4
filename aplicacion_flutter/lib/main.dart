@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'pages/landing_page.dart';
 import 'theme/aerotech_theme.dart';
@@ -17,6 +18,9 @@ class ReservasVuelosApp extends StatelessWidget {
     return MaterialApp(
       title: 'AeroTech - Reservas de vuelos',
       debugShowCheckedModeBanner: false,
+      locale: const Locale('es', 'EC'),
+      supportedLocales: const [Locale('es', 'EC')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
       theme: AerotechTheme.light,
       home: LandingPage(globoBuilder: globoBuilder),
     );
