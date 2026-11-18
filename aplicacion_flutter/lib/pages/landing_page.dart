@@ -185,59 +185,87 @@ class _LandingPageState extends State<LandingPage> {
     final escala = MediaQuery.textScalerOf(context).scale(1);
     final alto = math.max(
       constraints.maxHeight,
-      760.0 + math.max(0.0, escala - 1) * 460,
+      860.0 + math.max(0.0, escala - 1) * 460,
     );
     final cabecera = <Widget>[
       _cabecera(),
       const SizedBox(height: 24),
-      const Divider(color: AerotechTheme.border),
+      const Divider(color: Colors.white24),
       SizedBox(height: amplio ? 24 : 28),
     ];
     if (amplio) {
-      return SizedBox(
-        key: const ValueKey('landing-hero'),
-        height: alto,
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: margen, vertical: 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              ...cabecera,
-              Expanded(
-                child: Center(
-                  child: Row(
-                    children: [
-                      Expanded(child: _presentacion(true)),
-                      const SizedBox(width: 48),
-                      Expanded(
-                        child: _mundo(maximo: math.min(720, alto - 190)),
-                      ),
-                    ],
+      return _fondoHero(
+        SizedBox(
+          key: const ValueKey('landing-hero'),
+          height: alto,
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: margen, vertical: 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ...cabecera,
+                Expanded(
+                  child: Center(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(
+                          flex: 5,
+                          child: Align(
+                            alignment: Alignment.bottomLeft,
+                            child: Padding(
+                              padding: const EdgeInsets.only(bottom: 32),
+                              child: _presentacion(true),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 32),
+                        Expanded(
+                          flex: 6,
+                          child: Center(
+                            child: _mundo(maximo: math.min(980, alto - 150)),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       );
     }
-    return ConstrainedBox(
-      key: const ValueKey('landing-hero'),
-      constraints: BoxConstraints(minHeight: constraints.maxHeight),
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: margen, vertical: 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            ...cabecera,
-            _presentacion(false),
-            const SizedBox(height: 28),
-            _mundo(),
-          ],
+    return _fondoHero(
+      ConstrainedBox(
+        key: const ValueKey('landing-hero'),
+        constraints: BoxConstraints(minHeight: constraints.maxHeight),
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: margen, vertical: 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ...cabecera,
+              _presentacion(false),
+              const SizedBox(height: 28),
+              _mundo(),
+            ],
+          ),
         ),
       ),
     );
   }
+
+  Widget _fondoHero(Widget child) => DecoratedBox(
+    decoration: const BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xff07162f), Color(0xff0d3653), Color(0xff135d73)],
+      ),
+    ),
+    child: child,
+  );
 
   Widget _explorarVuelos() => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -364,7 +392,7 @@ class _LandingPageState extends State<LandingPage> {
               fontWeight: FontWeight.w800,
               fontSize: 22,
               letterSpacing: -0.8,
-              color: AerotechTheme.navy,
+              color: Colors.white,
             ),
           ),
         ),
@@ -375,6 +403,7 @@ class _LandingPageState extends State<LandingPage> {
           child: TextButton(
             onPressed: () => _abrir(registro: false),
             style: TextButton.styleFrom(
+              foregroundColor: Colors.white,
               minimumSize: const Size(0, 48),
               textStyle: const TextStyle(
                 fontSize: 14,
@@ -400,7 +429,7 @@ class _LandingPageState extends State<LandingPage> {
         child: const Text(
           'UN MUNDO DE POSIBILIDADES',
           style: TextStyle(
-            color: AerotechTheme.blue,
+            color: Color(0xff7ee6ed),
             fontWeight: FontWeight.w800,
             letterSpacing: 1.3,
             fontSize: 11,
@@ -413,8 +442,8 @@ class _LandingPageState extends State<LandingPage> {
         child: Text(
           'El mundo está\nmás cerca.',
           style: TextStyle(
-            color: AerotechTheme.navy,
-            fontSize: amplio ? 58 : 42,
+            color: Colors.white,
+            fontSize: amplio ? 84 : 48,
             height: 1.06,
             letterSpacing: amplio ? -2 : -1.2,
             fontWeight: FontWeight.w800,
@@ -427,19 +456,24 @@ class _LandingPageState extends State<LandingPage> {
         child: const Text(
           'Hay lugares que todavía no conoces e historias que esperan por ti. '
           'Encuentra tu próximo vuelo y empieza a imaginar el viaje.',
-          style: TextStyle(
-            color: AerotechTheme.textSecondary,
-            fontSize: 16,
-            height: 1.55,
-          ),
+          style: TextStyle(color: Colors.white70, fontSize: 18, height: 1.55),
         ),
       ),
       const SizedBox(height: 28),
       _acciones(),
       const SizedBox(height: 20),
       const Text(
+        'Una nueva historia entre dos destinos',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      const SizedBox(height: 12),
+      const Text(
         'Tus destinos. Tus planes. Tu manera de viajar.',
-        style: TextStyle(color: AerotechTheme.textSecondary, fontSize: 12),
+        style: TextStyle(color: Colors.white70, fontSize: 12),
       ),
     ],
   );
@@ -470,6 +504,8 @@ class _LandingPageState extends State<LandingPage> {
             icon: const Icon(Icons.arrow_forward_rounded, size: 20),
             label: const Text('Explorar vuelos'),
             style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xff7ee6ed),
+              foregroundColor: AerotechTheme.navy,
               fixedSize: tamano,
               padding: const EdgeInsets.symmetric(horizontal: 16),
               shape: forma,
@@ -484,8 +520,8 @@ class _LandingPageState extends State<LandingPage> {
             style: OutlinedButton.styleFrom(
               fixedSize: tamano,
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              foregroundColor: AerotechTheme.navy,
-              side: const BorderSide(color: AerotechTheme.border),
+              foregroundColor: Colors.white,
+              side: const BorderSide(color: Colors.white38),
               shape: forma,
               textStyle: texto,
             ),
@@ -533,28 +569,12 @@ class _LandingPageState extends State<LandingPage> {
                       GloboVuelos(
                         key: ValueKey('landing-globo-$movimientoReducido'),
                         animar: !movimientoReducido,
+                        tamanoMaximo: maximo,
+                        encuadre: 110,
                       ),
               ],
             ),
           ),
-        ),
-        const SizedBox(height: 12),
-        const Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.flight_rounded, size: 17, color: AerotechTheme.blue),
-            SizedBox(width: 9),
-            Flexible(
-              child: Text(
-                'Una nueva historia entre dos destinos',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: AerotechTheme.textSecondary,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-          ],
         ),
       ],
     );

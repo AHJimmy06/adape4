@@ -5,9 +5,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_3d_controller/flutter_3d_controller.dart';
 
 class GloboVuelos extends StatefulWidget {
-  const GloboVuelos({super.key, this.animar = true});
+  const GloboVuelos({
+    super.key,
+    this.animar = true,
+    this.tamanoMaximo = 440,
+    this.encuadre = 130,
+  });
 
   final bool animar;
+  final double tamanoMaximo;
+  final double encuadre;
 
   static const String semanticLabel =
       'Globo 3D de AeroTech con aviones en rutas';
@@ -28,7 +35,7 @@ class _GloboVuelosState extends State<GloboVuelos> {
 
   void _alCargarModelo(String _) {
     // El tercer argumento es porcentaje de encuadre, no distancia en metros.
-    _controlador.setCameraOrbit(28, 70, 130);
+    _controlador.setCameraOrbit(28, 70, widget.encuadre);
     if (widget.animar) {
       _controlador.playAnimation(animationName: _nombreAnimacion);
       _controlador.startRotation(rotationSpeed: 4);
@@ -47,7 +54,7 @@ class _GloboVuelosState extends State<GloboVuelos> {
         final maxWidth = constraints.maxWidth.isFinite
             ? constraints.maxWidth
             : 420.0;
-        final side = math.min(maxWidth, 440.0);
+        final side = math.min(maxWidth, widget.tamanoMaximo);
 
         return Semantics(
           label: GloboVuelos.semanticLabel,
