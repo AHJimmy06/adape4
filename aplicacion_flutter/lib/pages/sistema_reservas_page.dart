@@ -11,6 +11,7 @@ import '../widgets/presentacion/dialogo_aerotech.dart';
 import '../theme/aerotech_theme.dart';
 import '../widgets/sistema_compra/compra_sistema_dialog.dart';
 import '../widgets/sistema_compra/gestionar_accesos_reserva.dart';
+import '../widgets/sistema_reservas/detalle_reserva_dialog.dart';
 import 'sistema_vuelos_page.dart';
 
 class SistemaReservasPage extends StatefulWidget {
@@ -334,47 +335,77 @@ class _SistemaReservasPageState extends State<SistemaReservasPage> {
       ),
     ),
   );
+  Future<void> _verDetalles(Map<String, dynamic> reserva) async {
+    final vuelo = reserva['vuelo'] as Map? ?? {};
+    final salida = DateTime.tryParse(vuelo['salida_en']?.toString() ?? '');
+    final antes = salida != null && DateTime.now().isBefore(salida);
+    final seats = mapas(reserva['asientos']);
+    await showDialog<void>(
+      context: context,
+      builder: (c) => DetalleReservaDialog(
+        reserva: reserva,
+        onXml: () {
+          Navigator.pop(c);
+          _xml(reserva);
+        },
+        onAccesos:
+            antes &&
+                reserva['legada'] != true &&
+                seats.any((s) => s['estado'] == 'activo')
+            ? () {
+                Navigator.pop(c);
+                _gestionarAccesos(reserva);
+              }
+            : null,
+        onCancelar: antes && ((reserva['cantidad_activa'] as num?) ?? 0) > 0
+            ? () {
+                Navigator.pop(c);
+                _cancelar(reserva);
+              }
+            : null,
+        onReintentar: (cancelacion) {
+          Navigator.pop(c);
+          _reintentar(reserva, cancelacion);
+        },
+      ),
+    );
+  }
+
   Widget _reserva(Map<String, dynamic> r) {
     final vuelo = r['vuelo'] as Map? ?? {};
     final ruta = vuelo['ruta'] as Map? ?? {};
     final a = ruta['origen'] as Map? ?? {};
     final b = ruta['destino'] as Map? ?? {};
     final seats = mapas(r['asientos']);
-    final salida = DateTime.tryParse(vuelo['salida_en']?.toString() ?? '');
-    final antes = salida != null && DateTime.now().isBefore(salida);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '${vuelo['codigo'] ?? 'Reserva'}',
-              style: Theme.of(context).textTheme.titleLarge,
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text(
+                  '${a['iata'] ?? vuelo['origen'] ?? 'Origen no disponible'} ${a['ciudad'] ?? ''}',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const Icon(Icons.arrow_forward, semanticLabel: 'hacia'),
+                Text(
+                  '${b['iata'] ?? vuelo['destino'] ?? 'Destino no disponible'} ${b['ciudad'] ?? ''}',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
+            Text('Vuelo: ${vuelo['codigo'] ?? 'No disponible'}'),
+            SelectableText('Referencia de reserva: ${r['id']}'),
+            const SizedBox(height: 8),
             EtiquetaEstado(r['estado']),
-            const SizedBox(height: 16),
-            Text(
-              '${a['iata'] ?? vuelo['origen'] ?? ''} ${a['ciudad'] ?? ''} → ${b['iata'] ?? vuelo['destino'] ?? ''} ${b['ciudad'] ?? ''}',
-            ),
             Text(
               'Salida: ${fechaLegible(vuelo['salida_local'] ?? vuelo['salida_en'], zona: a['zona_horaria']?.toString())}',
-            ),
-            Text(
-              'Llegada: ${fechaLegible(vuelo['llegada_local'] ?? vuelo['llegada_en'], zona: b['zona_horaria']?.toString())}',
-            ),
-            if (r['legada'] == true)
-              const Text(
-                'Reserva anterior: no se asignaron etiquetas de asiento ni pagos de Stripe.',
-              ),
-            Text('Total original: ${dinero(r['total_centavos'])}'),
-            Text('Reembolsado: ${dinero(r['reembolsado_centavos'])}'),
-            Text(
-              'Importe restante: ${dinero(((r['total_centavos'] as num?)?.toInt() ?? 0) - ((r['reembolsado_centavos'] as num?)?.toInt() ?? 0))}',
-            ),
-            Text(
-              'Activos: ${r['cantidad_activa']} · Cancelados: ${r['cantidad_cancelada']}',
             ),
             Wrap(
               spacing: 8,
@@ -382,68 +413,20 @@ class _SistemaReservasPageState extends State<SistemaReservasPage> {
                 for (final s in seats)
                   Chip(
                     label: Text(
-                      '${s['codigo']} · ${s['clase_codigo']} · ${estadoLegible(s['estado'])} · ${dinero(s['total_centavos'])}',
+                      '${s['codigo']} · ${estadoLegible(s['estado'])}',
                     ),
                   ),
               ],
             ),
-            for (final s in seats) DetallePasajero(asiento: s),
-            for (final c in mapas(r['cancelaciones']))
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Wrap(
-                  spacing: 8,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    Text(
-                      'Reembolso: ${estadoLegible(c['estado'])} · ${dinero(c['importe_centavos'])}',
-                    ),
-                    if ([
-                      'pendiente',
-                      'fallida',
-                      'fallido',
-                      'failed',
-                      'pending',
-                      'reembolso_pendiente',
-                      'revision',
-                    ].contains(c['estado']))
-                      TextButton(
-                        onPressed: _busy ? null : () => _reintentar(r, c),
-                        child: const Text('Reintentar reembolso'),
-                      ),
-                  ],
-                ),
-              ),
-            if (seats.any((s) => s['estado'] == 'reembolso_pendiente'))
-              const Text(
-                'El reembolso sigue pendiente. Los asientos no se liberan hasta la confirmación del servidor.',
-              ),
-            Wrap(
-              spacing: 8,
-              children: [
-                OutlinedButton(
-                  onPressed: _busy ? null : () => _xml(r),
-                  child: const Text('Ver comprobante XML'),
-                ),
-                if (antes &&
-                    r['legada'] != true &&
-                    seats.any((s) => s['estado'] == 'activo'))
-                  OutlinedButton.icon(
-                    onPressed: _busy ? null : () => _gestionarAccesos(r),
-                    icon: const Icon(Icons.manage_accounts_outlined),
-                    label: const Text('Gestionar accesos'),
-                  ),
-                if (antes && ((r['cantidad_activa'] as num?) ?? 0) > 0)
-                  TextButton(
-                    onPressed: _busy ? null : () => _cancelar(r),
-                    child: const Text('Cancelar asientos'),
-                  ),
-              ],
+            if (r['legada'] == true)
+              Text('Reserva anterior · ${r['cantidad']} asiento(s)'),
+            Text('Total original: ${dinero(r['total_centavos'])}'),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: _busy ? null : () => _verDetalles(r),
+              icon: const Icon(Icons.receipt_long_outlined),
+              label: const Text('Ver detalles'),
             ),
-            if (!antes)
-              const Text(
-                'La cancelación está disponible únicamente antes de la salida.',
-              ),
           ],
         ),
       ),

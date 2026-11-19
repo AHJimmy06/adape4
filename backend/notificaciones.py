@@ -8,6 +8,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import requests
 
+from backend.correos_eventos_reserva import asunto_evento, contenido_evento
+
 
 class ErrorCorreo(Exception):
     """Solo códigos seguros: nunca incluir respuestas, destinatarios ni claves."""
@@ -106,6 +108,9 @@ def _datos_personales(datos):
 
 
 def _contenido(datos):
+    evento = contenido_evento(datos, _importe, _aeropuerto, _horario_correo, _detalle_pasajero)
+    if evento is not None:
+        return evento
     personal = datos.get('tipo') == 'pasajero'
     if personal:
         datos = _datos_personales(datos)
@@ -253,8 +258,9 @@ class ClienteMailtrap:
             mensaje = {
                 'from': {'email': self._remitente, 'name': 'AeroTech'},
                 'to': [{'email': datos['correo'], 'name': datos['nombre']}],
-                'subject': f"AeroTech · Reserva confirmada · {datos['vuelo'].get('codigo') or 'Tu viaje'}",
-                'text': texto, 'html': html, 'category': 'Confirmación de pago · Demostración',
+                'subject': asunto_evento(datos) or f"AeroTech · Reserva confirmada · {datos['vuelo'].get('codigo') or 'Tu viaje'}",
+                'text': texto, 'html': html,
+                'category': 'Evento de reserva · Demostración' if datos.get('evento') else 'Confirmación de pago · Demostración',
             }
         except (KeyError, TypeError, ValueError, AttributeError):
             raise ErrorCorreo('correo_datos_invalidos') from None
