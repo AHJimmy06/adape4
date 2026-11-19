@@ -10,6 +10,7 @@ import '../utils/formateador_xml.dart';
 import '../widgets/presentacion/dialogo_aerotech.dart';
 import '../theme/aerotech_theme.dart';
 import '../widgets/sistema_compra/compra_sistema_dialog.dart';
+import '../widgets/sistema_compra/gestionar_accesos_reserva.dart';
 import 'sistema_vuelos_page.dart';
 
 class SistemaReservasPage extends StatefulWidget {
@@ -23,6 +24,9 @@ class _SistemaReservasPageState extends State<SistemaReservasPage> {
   late final _api = SistemaApi(widget.apiService);
   List<Map<String, dynamic>> _reservas = [];
   List<Map<String, dynamic>> _pedidos = [];
+  List<Map<String, dynamic>> _compartidos = [];
+  bool _cargandoCompartidos = false;
+  String? _errorCompartidos;
   bool _busy = false;
   String? _error;
   final Map<String, String> _retryKeys = {};
@@ -33,6 +37,7 @@ class _SistemaReservasPageState extends State<SistemaReservasPage> {
   }
 
   Future<void> _cargar() async {
+    final compartidos = _cargarCompartidos();
     setState(() {
       _busy = true;
       _error = null;
@@ -57,8 +62,72 @@ class _SistemaReservasPageState extends State<SistemaReservasPage> {
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     } finally {
+      await compartidos;
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _cargarCompartidos() async {
+    if (_cargandoCompartidos) return;
+    setState(() {
+      _cargandoCompartidos = true;
+      _errorCompartidos = null;
+      _compartidos = [];
+    });
+    try {
+      final data = await _api.lista('/asientos-compartidos', 'asientos');
+      if (mounted) setState(() => _compartidos = data);
+    } catch (e) {
+      if (mounted) setState(() => _errorCompartidos = e.toString());
+    } finally {
+      if (mounted) setState(() => _cargandoCompartidos = false);
+    }
+  }
+
+  Future<void> _gestionarAccesos(Map<String, dynamic> reserva) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => GestionarAccesosReserva(
+        api: _api,
+        reservaId: reserva['id'].toString(),
+      ),
+    );
+    if (mounted) await _cargar();
+  }
+
+  Widget _asientoCompartido(Map<String, dynamic> asiento) {
+    final vuelo = asiento['vuelo'] as Map? ?? {};
+    final ruta = vuelo['ruta'] as Map? ?? {};
+    final origen = ruta['origen'] as Map? ?? {};
+    final destino = ruta['destino'] as Map? ?? {};
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${vuelo['codigo']} · Asiento ${asiento['codigo']}',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            Text(
+              '${origen['iata']} ${origen['ciudad']} → ${destino['iata']} ${destino['ciudad']}',
+            ),
+            Text(
+              'Salida: ${fechaLegible(vuelo['salida_local'], zona: origen['zona_horaria']?.toString())}',
+            ),
+            Text(
+              'Llegada: ${fechaLegible(vuelo['llegada_local'], zona: destino['zona_horaria']?.toString())}',
+            ),
+            Text(
+              'Clase: ${asiento['clase_codigo']} · Categoría: ${asiento['categoria']}',
+            ),
+            Text('Maletas adicionales: ${asiento['maletas_adicionales'] ?? 0}'),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _continuarPago(Map<String, dynamic> pedido) async {
@@ -240,6 +309,27 @@ class _SistemaReservasPageState extends State<SistemaReservasPage> {
           if (!_busy && _reservas.isEmpty)
             const Text('Todavía no tienes reservas confirmadas.'),
           for (final r in _reservas) _reserva(r),
+          const SizedBox(height: 24),
+          Text(
+            'Asientos compartidos conmigo',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const Text(
+            'Solo consulta. El comprador puede cambiar o retirar tu acceso; actualiza para consultar los permisos vigentes.',
+          ),
+          TextButton.icon(
+            onPressed: _cargandoCompartidos ? null : _cargarCompartidos,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Actualizar asientos compartidos'),
+          ),
+          if (_cargandoCompartidos) const LinearProgressIndicator(),
+          if (_errorCompartidos != null)
+            PanelMensaje(_errorCompartidos!, error: true),
+          if (!_cargandoCompartidos &&
+              _errorCompartidos == null &&
+              _compartidos.isEmpty)
+            const Text('No tienes asientos compartidos vigentes.'),
+          for (final s in _compartidos) _asientoCompartido(s),
         ],
       ),
     ),
@@ -335,6 +425,14 @@ class _SistemaReservasPageState extends State<SistemaReservasPage> {
                   onPressed: _busy ? null : () => _xml(r),
                   child: const Text('Ver comprobante XML'),
                 ),
+                if (antes &&
+                    r['legada'] != true &&
+                    seats.any((s) => s['estado'] == 'activo'))
+                  OutlinedButton.icon(
+                    onPressed: _busy ? null : () => _gestionarAccesos(r),
+                    icon: const Icon(Icons.manage_accounts_outlined),
+                    label: const Text('Gestionar accesos'),
+                  ),
                 if (antes && ((r['cantidad_activa'] as num?) ?? 0) > 0)
                   TextButton(
                     onPressed: _busy ? null : () => _cancelar(r),
