@@ -40,6 +40,7 @@ class _CompraSistemaDialogState extends State<CompraSistemaDialog> {
   final _pasajeros = <String, PasajeroAsiento>{};
   final _operacion = CheckoutOperacion();
   bool _busy = false;
+  bool _pasoPasajeros = false;
   String? _error;
   @override
   void initState() {
@@ -132,6 +133,7 @@ class _CompraSistemaDialogState extends State<CompraSistemaDialog> {
           setState(() {
             _seleccion.removeWhere((c) => !libres.contains(c));
             _pasajeros.removeWhere((c, _) => !_seleccion.contains(c));
+            if (_seleccion.isEmpty) _pasoPasajeros = false;
             _error = 'La disponibilidad cambió mientras ingresabas. Conservamos los asientos libres; revisa tu selección.';
           });
           _operacion.limpiar();
@@ -192,6 +194,7 @@ class _CompraSistemaDialogState extends State<CompraSistemaDialog> {
         );
         _seleccion.clear();
         _pasajeros.clear();
+        _pasoPasajeros = false;
         _operacion.limpiar();
         widget.onRefresh();
         await _cargar();
@@ -209,25 +212,63 @@ class _CompraSistemaDialogState extends State<CompraSistemaDialog> {
 
   @override
   Widget build(BuildContext context) => DialogoAerotech(
-    key: ValueKey(_pedido == null ? 'cabina' : 'pedido'),
+    key: ValueKey(
+      _pedido != null
+          ? 'pedido'
+          : _pasoPasajeros
+          ? 'pasajeros'
+          : 'cabina',
+    ),
     title: _pedido == null
-        ? 'Elige tus asientos · ${widget.vuelo['codigo']}'
+        ? _pasoPasajeros
+              ? 'Pasajeros y equipaje · ${widget.vuelo['codigo']}'
+              : 'Elige tus asientos · ${widget.vuelo['codigo']}'
         : 'Pedido · Stripe TEST',
     subtitle: _pedido == null
-        ? 'Selecciona tu lugar y revisa los detalles de tu viaje.'
+        ? _pasoPasajeros
+              ? 'Asigna cada asiento y agrega el equipaje antes de pagar.'
+              : 'Selecciona tu lugar para continuar con los pasajeros.'
         : 'Revisa tu pedido y continúa al pago seguro.',
-    eyebrow: _pedido == null ? 'TU PRÓXIMO VIAJE' : 'RESUMEN DE COMPRA',
+    eyebrow: _pedido != null
+        ? '03 / RESUMEN Y PAGO'
+        : _pasoPasajeros
+        ? '02 / PASAJEROS Y EQUIPAJE'
+        : '01 / ELIGE TUS ASIENTOS',
     icon: _pedido == null
-        ? Icons.airline_seat_recline_normal
+        ? _pasoPasajeros
+              ? Icons.people_outline
+              : Icons.airline_seat_recline_normal
         : Icons.receipt_long_outlined,
     onClose: () {
       if (!_busy) Navigator.pop(context);
     },
     actions: [
+      if (_pedido == null && _pasoPasajeros)
+        TextButton.icon(
+          onPressed: _busy
+              ? null
+              : () => setState(() {
+                  _pasoPasajeros = false;
+                  _error = null;
+                }),
+          icon: const Icon(Icons.arrow_back),
+          label: const Text('Volver a los asientos'),
+        ),
       if (_pedido == null)
         FilledButton(
-          onPressed: _busy || _seleccion.isEmpty ? null : _comprar,
-          child: Text('Continuar con ${_seleccion.length} asiento(s)'),
+          onPressed: _busy || _seleccion.isEmpty
+              ? null
+              : _pasoPasajeros
+              ? _comprar
+              : () => setState(() {
+                  _pasoPasajeros = true;
+                  _error = null;
+                }),
+          child: Text(
+            _pasoPasajeros
+                ? 'Continuar al pago'
+                : 'Continuar con ${_seleccion.length} asiento(s)',
+          ),
         ),
     ],
     child: Column(
@@ -247,7 +288,7 @@ class _CompraSistemaDialogState extends State<CompraSistemaDialog> {
               }
             },
           )
-        else if (_mapa != null)
+        else if (_mapa != null && !_pasoPasajeros)
           CabinaSistema(
             clases: mapas(_mapa!['clases']),
             asientos: mapas(_mapa!['asientos']),
@@ -263,7 +304,7 @@ class _CompraSistemaDialogState extends State<CompraSistemaDialog> {
               _operacion.limpiar();
             }),
           ),
-        if (_pedido == null && _seleccion.isNotEmpty)
+        if (_pedido == null && _pasoPasajeros)
           PasajerosAsientos(
             configuraciones: _pasajeros,
             tarifasCentavos: _tarifasConIva,

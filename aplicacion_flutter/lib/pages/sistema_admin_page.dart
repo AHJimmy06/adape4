@@ -5,6 +5,7 @@ import '../services/api_service.dart';
 import '../services/sistema_api.dart';
 import '../theme/aerotech_theme.dart';
 import '../widgets/sistema_admin/formulario_operacion.dart';
+import '../widgets/sistema_admin/resumen_ruta.dart';
 import '../widgets/sistema_admin/usuarios/formulario_usuario.dart';
 import '../widgets/sistema_admin/usuarios/boton_estado_usuario.dart';
 
@@ -134,6 +135,10 @@ class _SistemaAdminPageState extends State<SistemaAdminPage> {
           '/disponibilidad-aeropuerto',
           parametros: parametros.map((k, v) => MapEntry(k, v.toString())),
         ),
+        consultarDisponibilidadAvion: (parametros) => _api.get(
+          '/disponibilidad-avion',
+          parametros: parametros.map((k, v) => MapEntry(k, v.toString())),
+        ),
         guardar: (datos) async {
           setState(() => _mutando = true);
           try {
@@ -152,7 +157,13 @@ class _SistemaAdminPageState extends State<SistemaAdminPage> {
             }
             if (dialogContext.mounted) Navigator.pop(dialogContext);
           } on ExcepcionApi catch (e) {
-            if (e.codigo == 409 || e.codigo == 404) {
+            if (e.codigo == 409 &&
+                const [
+                  'avion_ocupado',
+                  'aeropuerto_sin_cupo',
+                ].contains(e.codigoError)) {
+              rethrow;
+            } else if (e.codigo == 409 || e.codigo == 404) {
               conflicto = e;
               if (dialogContext.mounted) Navigator.pop(dialogContext);
             } else {
@@ -278,9 +289,7 @@ class _SistemaAdminPageState extends State<SistemaAdminPage> {
   String titulo(String recurso, Registro e) => switch (recurso) {
     'aeropuertos' => '${e['iata']} · ${e['nombre']}',
     'aviones' => '${e['matricula']} · ${e['modelo']}',
-    'rutas' =>
-      e['nombre']?.toString() ??
-          '${e['origen']?['iata']} → ${e['destino']?['iata']}',
+    'rutas' => ResumenRuta.titulo(e, _catalogos['aeropuertos'] ?? []),
     _ => e['codigo']?.toString() ?? 'Vuelo',
   };
   String detalle(String recurso, Registro e) => switch (recurso) {
@@ -474,7 +483,13 @@ class _SistemaAdminPageState extends State<SistemaAdminPage> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Text(detalle(recurso, e)),
+                  if (recurso == 'rutas')
+                    ResumenRuta(
+                      ruta: e,
+                      aeropuertos: _catalogos['aeropuertos'] ?? [],
+                    )
+                  else
+                    Text(detalle(recurso, e)),
                   if (bloqueado(e))
                     Padding(
                       padding: const EdgeInsets.only(top: 10),

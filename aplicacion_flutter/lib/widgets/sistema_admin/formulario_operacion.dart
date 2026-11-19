@@ -2,12 +2,15 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:latlong2/latlong.dart';
 
 import 'validacion_operaciones.dart';
 import '../../services/api_service.dart';
 import '../presentacion/dialogo_aerotech.dart';
 import '../../theme/aerotech_theme.dart';
 import '../../utils/checkout_operacion.dart';
+import 'selector_ubicacion_aeropuerto.dart';
+import 'disponibilidad_avion.dart';
 
 typedef Registro = Map<String, dynamic>;
 
@@ -19,12 +22,17 @@ class FormularioOperacion extends StatefulWidget {
     required this.guardar,
     this.registro,
     this.consultarDisponibilidad,
+    this.consultarDisponibilidadAvion,
+    this.mapaAeropuertoBuilder,
   });
   final String recurso;
   final Map<String, List<Registro>> catalogos;
   final Registro? registro;
   final Future<void> Function(Registro) guardar;
   final Future<Registro> Function(Registro parametros)? consultarDisponibilidad;
+  final Future<Registro> Function(Registro parametros)?
+  consultarDisponibilidadAvion;
+  final ConstructorMapaAeropuerto? mapaAeropuertoBuilder;
   @override
   State<FormularioOperacion> createState() => _FormularioOperacionState();
 }
@@ -44,6 +52,10 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
   Registro? _capacidad;
   String? _errorCapacidad;
   bool _consultandoCapacidad = false;
+  int _consultaAvion = 0;
+  Registro? _disponibilidadAvion;
+  String? _errorDisponibilidadAvion;
+  bool _consultandoAvion = false;
   TextEditingController campo(String clave, [String inicial = '']) =>
       _campos.putIfAbsent(
         clave,
@@ -92,7 +104,10 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
     }
     if (widget.recurso == 'vuelos') {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _consultarCapacidad();
+        if (mounted) {
+          _consultarCapacidad();
+          _consultarAvion();
+        }
       });
     }
   }
@@ -136,6 +151,56 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
     } finally {
       if (mounted && consulta == _consultaCapacidad) {
         setState(() => _consultandoCapacidad = false);
+      }
+    }
+  }
+
+  Future<void> _consultarAvion() async {
+    final consulta = ++_consultaAvion;
+    final salida = _salida;
+    if (widget.consultarDisponibilidadAvion == null ||
+        salida == null ||
+        _avion == null ||
+        _ruta == null) {
+      if (mounted) {
+        setState(() {
+          _disponibilidadAvion = null;
+          _errorDisponibilidadAvion = null;
+          _consultandoAvion = false;
+        });
+      }
+      return;
+    }
+    setState(() {
+      _disponibilidadAvion = null;
+      _errorDisponibilidadAvion = null;
+      _consultandoAvion = true;
+    });
+    try {
+      final datos = await widget.consultarDisponibilidadAvion!({
+        'avion_id': _avion,
+        'ruta_id': _ruta,
+        'fecha': fecha(salida),
+        if (widget.registro?['id'] != null) 'vuelo_id': widget.registro!['id'],
+        if (_llegada != null) ...{
+          'salida_local': '${fecha(salida)}T${hora(salida)}',
+          'llegada_local': '${fecha(_llegada!)}T${hora(_llegada!)}',
+        },
+        if (_frecuencia == 'diaria' && _fechaFin != null)
+          'fecha_hasta': fecha(_fechaFin!),
+      });
+      if (mounted && consulta == _consultaAvion) {
+        setState(() => _disponibilidadAvion = datos);
+      }
+    } catch (e) {
+      if (mounted && consulta == _consultaAvion) {
+        setState(() {
+          _errorDisponibilidadAvion = e is ExcepcionApi ? e.mensaje : 'No se pudo consultar el horario del avión. Actualiza antes de guardar.';
+        });
+      }
+    } finally {
+      if (mounted && consulta == _consultaAvion) {
+        setState(() => _consultandoAvion = false);
       }
     }
   }
@@ -219,6 +284,28 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
     );
   }
 
+  Future<void> _elegirUbicacion() async {
+    final latitud = campo('latitud').text;
+    final longitud = campo('longitud').text;
+    final valida =
+        ValidacionOperaciones.coordenada(latitud, 90) == null &&
+        ValidacionOperaciones.coordenada(longitud, 180) == null;
+    final seleccion = await showDialog<LatLng>(
+      context: context,
+      builder: (_) => SelectorUbicacionAeropuerto(
+        inicial: valida
+            ? LatLng(double.parse(latitud), double.parse(longitud))
+            : null,
+        mapaBuilder: widget.mapaAeropuertoBuilder,
+      ),
+    );
+    if (!mounted || seleccion == null) return;
+    setState(() {
+      campo('latitud').text = seleccion.latitude.toStringAsFixed(6);
+      campo('longitud').text = seleccion.longitude.toStringAsFixed(6);
+    });
+  }
+
   List<Widget> aeropuerto() => [
     texto(
       'iata',
@@ -285,6 +372,15 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
       'Límite de llegadas programadas dentro de cada franja local del aeropuerto.',
     ),
     const _SeccionFormulario('Ubicación y zona horaria', Icons.public),
+    Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: OutlinedButton.icon(
+        key: const ValueKey('elegir_ubicacion_mapa'),
+        onPressed: _guardando ? null : _elegirUbicacion,
+        icon: const Icon(Icons.map_outlined),
+        label: const Text('Elegir ubicación en el mapa'),
+      ),
+    ),
     texto(
       'latitud',
       'Latitud',
@@ -501,7 +597,8 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
       catalogo('aeropuertos'),
       _origen,
       (v) => setState(() => _origen = v),
-      (e) => '${e['iata']} · ${e['ciudad']}',
+      (e) =>
+          '${e['iata']} · ${e['nombre'] ?? 'Aeropuerto'} · ${e['ciudad'] ?? ''}',
     ),
     selector(
       'destino',
@@ -509,7 +606,8 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
       catalogo('aeropuertos'),
       _destino,
       (v) => setState(() => _destino = v),
-      (e) => '${e['iata']} · ${e['ciudad']}',
+      (e) =>
+          '${e['iata']} · ${e['nombre'] ?? 'Aeropuerto'} · ${e['ciudad'] ?? ''}',
     ),
     if (catalogo('aeropuertos').length < 2)
       const Text('Crea al menos dos aeropuertos activos antes de crear rutas.'),
@@ -577,6 +675,7 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
       }
     });
     _consultarCapacidad();
+    _consultarAvion();
   }
 
   Future<void> elegirFin() async {
@@ -591,7 +690,10 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
       cancelText: 'Cancelar',
       confirmText: 'Elegir',
     );
-    if (fin != null && mounted) setState(() => _fechaFin = fin);
+    if (fin != null && mounted) {
+      setState(() => _fechaFin = fin);
+      _consultarAvion();
+    }
   }
 
   List<Widget> vuelo() => [
@@ -620,7 +722,10 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
         ],
         onChanged: _guardando
             ? null
-            : (value) => setState(() => _frecuencia = value ?? 'unico'),
+            : (value) {
+                setState(() => _frecuencia = value ?? 'unico');
+                _consultarAvion();
+              },
       ),
       const SizedBox(height: 14),
     ],
@@ -632,19 +737,16 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
       (v) {
         setState(() => _ruta = v);
         _consultarCapacidad();
+        _consultarAvion();
       },
       (e) =>
           e['nombre']?.toString() ??
           '${e['origen']?['iata']} → ${e['destino']?['iata']}',
     ),
-    selector(
-      'avion',
-      'Avión',
-      catalogo('aviones'),
-      _avion,
-      (v) => setState(() => _avion = v),
-      (e) => '${e['matricula']} · ${e['modelo']}',
-    ),
+    selector('avion', 'Avión', catalogo('aviones'), _avion, (v) {
+      setState(() => _avion = v);
+      _consultarAvion();
+    }, (e) => '${e['matricula']} · ${e['modelo']}'),
     const _SeccionFormulario('Horarios del viaje', Icons.schedule),
     const Text(
       'Horarios civiles locales de cada aeropuerto. La duración y los cruces de zona se validan en el servidor.',
@@ -682,6 +784,23 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
       ),
       const SizedBox(height: 14),
     ],
+    if (widget.consultarDisponibilidadAvion != null)
+      DisponibilidadAvion(
+        datos: _disponibilidadAvion,
+        cargando: _consultandoAvion,
+        error: _errorDisponibilidadAvion,
+        bloqueado: _guardando,
+        onActualizar: _consultarAvion,
+        onSeleccionar: (salida, llegada) {
+          setState(() {
+            _salida = salida;
+            _llegada = llegada;
+            _error = null;
+          });
+          _consultarCapacidad();
+          _consultarAvion();
+        },
+      ),
     if (avion != null)
       const _SeccionFormulario('Cabina y tarifas', Icons.payments_outlined),
     if (avion != null)
@@ -778,6 +897,17 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
           setState(() => _error = 'La llegada debe ser posterior a la salida.');
           return;
         }
+        if (widget.consultarDisponibilidadAvion != null &&
+            (_consultandoAvion ||
+                _disponibilidadAvion == null ||
+                _disponibilidadAvion?['disponible'] != true)) {
+          setState(
+            () => _error = _disponibilidadAvion?['disponible'] == false
+                ? 'El avión ya tiene otro vuelo en ese horario. Elige un intervalo libre.'
+                : 'Consulta la disponibilidad del avión antes de guardar.',
+          );
+          return;
+        }
         if (clasesAvion.isEmpty) {
           setState(() => _error = 'El avión debe tener una cabina válida.');
           return;
@@ -823,6 +953,13 @@ class _FormularioOperacionState extends State<FormularioOperacion> {
     try {
       await widget.guardar(datos);
     } catch (error) {
+      if (error is ExcepcionApi &&
+          const [
+            'avion_ocupado',
+            'aeropuerto_sin_cupo',
+          ].contains(error.codigoError)) {
+        await Future.wait([_consultarAvion(), _consultarCapacidad()]);
+      }
       if (mounted) {
         setState(
           () => _error = error is ExcepcionApi

@@ -77,6 +77,7 @@ class PasajerosAsientos extends StatelessWidget {
           Card(
             child: ExpansionTile(
               key: ValueKey('pasajero-$codigo'),
+              initiallyExpanded: true,
               leading: const Icon(Icons.person_outline),
               title: Text('Asiento $codigo'),
               subtitle: Text(

@@ -190,6 +190,17 @@ void main() {
           }
           return http.Response('{}', 200);
         }
+        if (r.url.path.endsWith('/disponibilidad-avion')) {
+          return http.Response(
+            jsonEncode({
+              'disponible': true,
+              'ventanas': [],
+              'ocupados': [],
+              'conflictos': [],
+            }),
+            200,
+          );
+        }
         final key = r.url.path.split('/').last;
         return http.Response(
           jsonEncode({key: store[key]}),
@@ -316,7 +327,7 @@ void main() {
     await editar(t, 'r1');
     await t.tap(find.byKey(const ValueKey('destino-a2')));
     await t.pumpAndSettle();
-    await t.tap(find.text('UIO · Quito').last);
+    await t.tap(find.text('UIO · Mariscal Sucre · Quito').last);
     await t.pumpAndSettle();
     await guardar(t);
     expect(
